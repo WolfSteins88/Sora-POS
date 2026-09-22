@@ -54,7 +54,7 @@ export default async function ShiftsPage({
   return (
     <div>
       <PageHeader title="Shift" description="Checkout menolak penjualan jika shift belum terbuka." />
-      <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
+      <div className="grid items-start gap-4 lg:grid-cols-[340px_1fr]">
         <Card>
           {editing ? (
             <form action={updateShiftAdmin} className="space-y-3" key={editing.id}>

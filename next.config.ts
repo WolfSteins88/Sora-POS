@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["postgres", "bcryptjs"],
   experimental: {
     serverActions: {
-      bodySizeLimit: "3mb",
+      bodySizeLimit: "8mb",
     },
   },
 };

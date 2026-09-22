@@ -26,9 +26,9 @@ export function AccentColorPicker({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex min-w-0 flex-wrap items-center gap-3">
       <input type="hidden" name="ui_accent_color" value={custom ? color : ""} />
-      <label className="relative inline-flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-line shadow-card">
+      <label className="relative inline-flex size-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-line shadow-card">
         <span className="sr-only">Pilih warna aksen</span>
         <span className="absolute inset-0" style={{ background: color }} />
         <input

@@ -11,6 +11,7 @@ import { getSql } from "@/lib/db";
 import { parseIdNumber } from "@/lib/format";
 import { saveUpload } from "@/lib/images/save-local";
 import { getSetting } from "@/lib/settings";
+import { restoreBackupDump, type BackupDump } from "@/lib/backup";
 import { nextSku, skuPrefixForProduct } from "@/lib/sku";
 import { normalizeShopMode } from "@/lib/theme";
 import {
@@ -580,6 +581,37 @@ export async function saveSettings(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/products");
   redirect("/settings?saved=1");
+}
+
+export async function importBackup(formData: FormData) {
+  const session = await requireSession();
+  guard(session.role, "settings");
+  if (str(formData, "confirm") !== "1") {
+    throw new Error("Centang konfirmasi sebelum mengimpor.");
+  }
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("Pilih berkas JSON cadangan.");
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error("Berkas terlalu besar (maksimal 8MB).");
+  }
+  let dump: BackupDump;
+  try {
+    dump = JSON.parse(await file.text()) as BackupDump;
+  } catch {
+    throw new Error("Berkas JSON tidak valid.");
+  }
+  await restoreBackupDump(dump, session.id);
+  revalidatePath("/", "layout");
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  revalidatePath("/pos");
+  revalidatePath("/products");
+  revalidatePath("/shifts");
+  revalidatePath("/transactions");
+  revalidatePath("/reports");
+  redirect("/settings?imported=1");
 }
 
 export async function savePrinter(formData: FormData) {
