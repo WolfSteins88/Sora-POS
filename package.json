@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:setup": "node scripts/setup-db.mjs",
-    "seed:fnb-json": "node scripts/build-fnb-seed.mjs"
+    "seed:fnb-json": "node scripts/build-fnb-seed.mjs",
+    "seed:retail-json": "node scripts/build-retail-seed.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -138,15 +138,18 @@ textarea {
 }
 
 .drawer-overlay {
-  display: none;
   position: fixed;
   inset: 0;
   z-index: 1250;
   background: rgb(28 25 23 / 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion) ease;
 }
 
 .drawer-overlay.open {
-  display: block;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .app-drawer {
@@ -163,13 +166,67 @@ textarea {
   transform: translateX(-100%);
   pointer-events: none;
   visibility: hidden;
-  transition: transform var(--motion) ease;
+  transition:
+    transform var(--motion) ease,
+    visibility 0s linear var(--motion);
 }
 
 .app-drawer.open {
   transform: translateX(0);
   pointer-events: auto;
   visibility: visible;
+  transition:
+    transform var(--motion) ease,
+    visibility 0s linear 0s;
+}
+
+.menu-toggle {
+  position: relative;
+  z-index: 1310;
+  background: #fff;
+}
+
+.burger {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 14px;
+}
+
+.burger span {
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transition:
+    transform var(--motion) ease,
+    opacity var(--motion) ease;
+}
+
+.burger span:nth-child(1) {
+  top: 0;
+}
+
+.burger span:nth-child(2) {
+  top: 6px;
+}
+
+.burger span:nth-child(3) {
+  top: 12px;
+}
+
+.menu-toggle.is-open .burger span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.menu-toggle.is-open .burger span:nth-child(2) {
+  opacity: 0;
+}
+
+.menu-toggle.is-open .burger span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
 }
 
 .app-drawer nav a {

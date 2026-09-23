@@ -609,38 +609,185 @@ function collapseCategories(rows: FnbCategoryPoint[]): FnbCategoryPoint[] {
 
 export async function retailDashboard() {
   const sql = getSql();
-  const base = await dashboardStats("retail");
-  const payments = await sql`
-    SELECT p.method, COALESCE(SUM(p.amount), 0)::text AS amount
-    FROM payments p
-    JOIN transactions t ON t.id = p.transaction_id
-    WHERE t.status = 'completed'
-      AND t.created_at::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date
-    GROUP BY p.method
-    ORDER BY SUM(p.amount) DESC
+  const retailSale = sql`
+    EXISTS (
+      SELECT 1 FROM transaction_items ti
+      JOIN products p ON p.id = ti.product_id
+      WHERE ti.transaction_id = t.id AND p.catalog_pack = 'retail'
+    )
   `;
-  const recent = await sql`
-    SELECT transaction_number, total::text, status
-    FROM transactions
-    ORDER BY created_at DESC
-    LIMIT 4
-  `;
-  const products = await sql`
-    SELECT ti.product_name,
-           SUM(ti.quantity)::int AS qty,
-           MAX(ti.unit_price)::text AS unit_price,
-           COALESCE(MAX(p.current_stock), 0)::text AS current_stock
-    FROM transaction_items ti
-    JOIN transactions t ON t.id = ti.transaction_id
-    LEFT JOIN products p ON p.id = ti.product_id
-    WHERE t.status = 'completed'
-      AND t.created_at::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date
-      AND (p.catalog_pack = 'retail' OR p.catalog_pack IS NULL)
-    GROUP BY ti.product_name
-    ORDER BY qty DESC
-    LIMIT 5
-  `;
-  return { ...base, payments, recent, products };
+  const [
+    dailyRows,
+    hourlyRows,
+    [items],
+    [customers],
+    categoryRows,
+    topRows,
+    recentRows,
+    lowRows,
+  ] = await Promise.all([
+    sql<{ day: string; revenue: string; trx_count: number }[]>`
+      SELECT to_char(d::date, 'YYYY-MM-DD') AS day,
+             COALESCE(SUM(t.total) FILTER (WHERE t.status = 'completed'), 0)::text AS revenue,
+             COUNT(t.id) FILTER (WHERE t.status = 'completed')::int AS trx_count
+      FROM generate_series(
+        (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - 59,
+        (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date,
+        interval '1 day'
+      ) AS d
+      LEFT JOIN transactions t
+        ON (t.created_at AT TIME ZONE 'Asia/Jakarta')::date = d::date
+       AND ${retailSale}
+      GROUP BY d
+      ORDER BY d
+    `,
+    sql<{ hour: number; revenue: string; trx_count: number }[]>`
+      SELECT gs.hour::int AS hour,
+             COALESCE(SUM(t.total) FILTER (WHERE t.status = 'completed'), 0)::text AS revenue,
+             COUNT(t.id) FILTER (WHERE t.status = 'completed')::int AS trx_count
+      FROM generate_series(7, 21) AS gs(hour)
+      LEFT JOIN transactions t
+        ON (t.created_at AT TIME ZONE 'Asia/Jakarta')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date
+       AND EXTRACT(HOUR FROM (t.created_at AT TIME ZONE 'Asia/Jakarta'))::int = gs.hour::int
+       AND ${retailSale}
+      GROUP BY gs.hour
+      ORDER BY gs.hour
+    `,
+    sql<{ items_today: number; items_yesterday: number }[]>`
+      SELECT
+        COALESCE(SUM(ti.quantity) FILTER (
+          WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date
+        ), 0)::int AS items_today,
+        COALESCE(SUM(ti.quantity) FILTER (
+          WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - 1
+        ), 0)::int AS items_yesterday
+      FROM transaction_items ti
+      JOIN transactions t ON t.id = ti.transaction_id AND t.status = 'completed'
+      JOIN products p ON p.id = ti.product_id AND p.catalog_pack = 'retail'
+      WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - 1
+    `,
+    sql<{ customers_today: number; customers_yesterday: number }[]>`
+      SELECT
+        COUNT(DISTINCT NULLIF(BTRIM(t.customer_name), '')) FILTER (
+          WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date
+        )::int AS customers_today,
+        COUNT(DISTINCT NULLIF(BTRIM(t.customer_name), '')) FILTER (
+          WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - 1
+        )::int AS customers_yesterday
+      FROM transactions t
+      WHERE t.status = 'completed'
+        AND (t.created_at AT TIME ZONE 'Asia/Jakarta')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - 1
+        AND ${retailSale}
+    `,
+    sql<{ name: string; today: string; week: string; month: string }[]>`
+      SELECT COALESCE(c.name, 'Lainnya') AS name,
+             COALESCE(SUM(ti.subtotal) FILTER (
+               WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date
+             ), 0)::text AS today,
+             COALESCE(SUM(ti.subtotal) FILTER (
+               WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - 6
+             ), 0)::text AS week,
+             COALESCE(SUM(ti.subtotal), 0)::text AS month
+      FROM transaction_items ti
+      JOIN transactions t ON t.id = ti.transaction_id AND t.status = 'completed'
+      JOIN products p ON p.id = ti.product_id AND p.catalog_pack = 'retail'
+      LEFT JOIN categories c ON c.id = p.category_id
+      WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - 29
+      GROUP BY COALESCE(c.name, 'Lainnya')
+      ORDER BY SUM(ti.subtotal) DESC
+    `,
+    sql<{ product_name: string; image: string | null; qty: number; revenue: string }[]>`
+      SELECT ti.product_name,
+             MAX(p.image) AS image,
+             SUM(ti.quantity)::int AS qty,
+             COALESCE(SUM(ti.subtotal), 0)::text AS revenue
+      FROM transaction_items ti
+      JOIN transactions t ON t.id = ti.transaction_id AND t.status = 'completed'
+      JOIN products p ON p.id = ti.product_id AND p.catalog_pack = 'retail'
+      WHERE (t.created_at AT TIME ZONE 'Asia/Jakarta')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date
+      GROUP BY ti.product_name
+      ORDER BY qty DESC
+      LIMIT 5
+    `,
+    sql<{ id: string; transaction_number: string; time_label: string; customer_name: string; total: string }[]>`
+      SELECT t.id,
+             t.transaction_number,
+             to_char(t.created_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI') AS time_label,
+             COALESCE(NULLIF(BTRIM(t.customer_name), ''), 'Walk-in') AS customer_name,
+             t.total::text AS total
+      FROM transactions t
+      WHERE t.status = 'completed'
+        AND ${retailSale}
+      ORDER BY t.created_at DESC
+      LIMIT 5
+    `,
+    sql<{ id: string; name: string; current_stock: string; minimum_stock: string }[]>`
+      SELECT id, name, current_stock::text, minimum_stock::text
+      FROM products
+      WHERE kind = 'goods' AND catalog_pack = 'retail' AND current_stock <= minimum_stock
+      ORDER BY current_stock ASC, name
+      LIMIT 5
+    `,
+  ]);
+
+  const daily = dailyRows.map((row) => ({
+    label: String(row.day),
+    revenue: num(row.revenue),
+    trx: Number(row.trx_count || 0),
+  }));
+  const sumRevenue = (rows: { revenue: number }[]) => rows.reduce((sum, row) => sum + row.revenue, 0);
+
+  return {
+    kpi: {
+      revenueToday: daily.at(-1)?.revenue ?? 0,
+      revenueYesterday: daily.at(-2)?.revenue ?? 0,
+      trxToday: daily.at(-1)?.trx ?? 0,
+      trxYesterday: daily.at(-2)?.trx ?? 0,
+      itemsToday: Number(items?.items_today || 0),
+      itemsYesterday: Number(items?.items_yesterday || 0),
+      customersToday: Number(customers?.customers_today || 0),
+      customersYesterday: Number(customers?.customers_yesterday || 0),
+    },
+    hourly: hourlyRows.map((row) => ({
+      label: `${String(row.hour).padStart(2, "0")}:00`,
+      revenue: num(row.revenue),
+      trx: Number(row.trx_count || 0),
+    })),
+    week: daily.slice(-7),
+    month: daily.slice(-30),
+    compare: {
+      today: daily.at(-2)?.revenue ?? 0,
+      week: sumRevenue(daily.slice(-14, -7)),
+      month: sumRevenue(daily.slice(-60, -30)),
+    },
+    categories: collapseCategories(
+      categoryRows.map((row) => ({
+        name: String(row.name),
+        today: num(row.today),
+        week: num(row.week),
+        month: num(row.month),
+      })),
+    ),
+    top: topRows.map((row) => ({
+      name: String(row.product_name),
+      image: row.image,
+      qty: Number(row.qty || 0),
+      revenue: num(row.revenue),
+    })),
+    recent: recentRows.map((row) => ({
+      id: String(row.id),
+      number: String(row.transaction_number),
+      time: String(row.time_label),
+      customer: String(row.customer_name),
+      total: num(row.total),
+    })),
+    lowStock: lowRows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      stock: String(row.current_stock),
+      minimum: String(row.minimum_stock),
+    })),
+  };
 }
 
 export type RecipeHppLine = {

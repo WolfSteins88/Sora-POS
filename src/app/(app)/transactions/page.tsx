@@ -4,6 +4,7 @@ import { Ban, Receipt, ShoppingCart, TrendingDown, TrendingUp, Wallet, X } from 
 import { ProductImage } from "@/components/ProductImage";
 import { money, num } from "@/lib/format";
 import { getSettingsMap } from "@/lib/settings";
+import { normalizeShopMode } from "@/lib/theme";
 import { getTransactionFull, transactionDesk } from "@/server/queries";
 import { PrintButton } from "./[id]/PrintButton";
 import { RefundButton } from "./RefundButton";
@@ -85,6 +86,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     params.id ? getTransactionFull(params.id) : Promise.resolve(null),
   ]);
   const currency = settings.currency || "Rp";
+  const retail = normalizeShopMode(settings.shop_mode) === "retail";
   const pages = Math.max(1, Math.ceil(desk.total / desk.pageSize));
   const start = desk.total === 0 ? 0 : (desk.page - 1) * desk.pageSize + 1;
   const end = Math.min(desk.page * desk.pageSize, desk.total);
@@ -250,15 +252,17 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                 </Link>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className={`mt-3 grid gap-2 text-sm ${retail ? "grid-cols-1" : "grid-cols-2"}`}>
               <p>
                 <span className="block text-xs text-muted">Kasir</span>
                 {detail.cashier_name}
               </p>
-              <p>
-                <span className="block text-xs text-muted">Meja</span>
-                {detail.order_type === "dine_in" ? detail.table_number || "-" : "Bawa pulang"}
-              </p>
+              {retail ? null : (
+                <p>
+                  <span className="block text-xs text-muted">Meja</span>
+                  {detail.order_type === "dine_in" ? detail.table_number || "-" : "Bawa pulang"}
+                </p>
+              )}
             </div>
             <ul className="mt-3 max-h-64 space-y-3 overflow-auto border-t border-line pt-3">
               {detail.items.map(

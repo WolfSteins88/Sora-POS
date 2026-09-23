@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Card, PageHeader } from "@/components/ui";
 import { money, num } from "@/lib/format";
 import { getSettingsMap } from "@/lib/settings";
+import { normalizeShopMode } from "@/lib/theme";
 import { getTransactionFull } from "@/server/queries";
 import { PrintButton } from "./PrintButton";
 
@@ -10,6 +11,7 @@ export default async function TransactionDetailPage({ params }: { params: Promis
   const trx = await getTransactionFull(id);
   if (!trx) notFound();
   const settings = await getSettingsMap();
+  const retail = normalizeShopMode(settings.shop_mode) === "retail";
   return (
     <div className="max-w-xl">
       <PageHeader
@@ -41,9 +43,11 @@ export default async function TransactionDetailPage({ params }: { params: Promis
         }
       />
       <Card>
-        <p className="text-sm text-muted">
-          {trx.order_type === "dine_in" ? `Meja ${trx.table_number || "-"}` : "Bawa pulang"}
-        </p>
+        {retail ? null : (
+          <p className="text-sm text-muted">
+            {trx.order_type === "dine_in" ? `Meja ${trx.table_number || "-"}` : "Bawa pulang"}
+          </p>
+        )}
         <ul className="mt-3 divide-y divide-line text-sm">
           {trx.items.map((item: { id: string; product_name: string; quantity: number; subtotal: string; variants?: { option_name: string }[]; addons?: { addon_name: string }[] }) => (
             <li key={item.id} className="flex justify-between py-2">

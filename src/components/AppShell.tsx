@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Menu,
   X,
   Store,
   LayoutDashboard,
@@ -22,7 +21,7 @@ import {
 } from "lucide-react";
 import { NAV_ITEMS, can, type Role } from "@/lib/rbac";
 import { logoutAction } from "@/app/actions/auth";
-import { Badge } from "@/components/ui";
+import { Badge, PrimaryButton, ghostButtonClass } from "@/components/ui";
 
 const ICONS: Record<string, typeof LayoutDashboard> = {
   "/dashboard": LayoutDashboard,
@@ -61,11 +60,24 @@ type Props = {
 
 export function AppShell({ user, shopName, shopMode, children }: Props) {
   const pathname = usePathname();
+  const accountRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   useEffect(() => {
     setOpen(false);
+    setAccountOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    function onPointer(event: MouseEvent) {
+      if (!accountRef.current?.contains(event.target as Node)) setAccountOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [accountOpen]);
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
@@ -76,11 +88,17 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      if (confirmLogout) {
+        setConfirmLogout(false);
+        return;
+      }
+      setAccountOpen(false);
+      setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [confirmLogout]);
 
   const items = NAV_ITEMS.filter((item) => can(user.role, item.module)).filter((item) => {
     if (shopMode === "retail" && (item.module === "recipes" || item.module === "inventory")) return false;
@@ -89,6 +107,12 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
   const named = items.filter((item) => PRIMARY_HREFS.includes(item.href));
   const iconOnly = items.filter((item) => !PRIMARY_HREFS.includes(item.href));
   const initial = user.name.trim().slice(0, 1).toUpperCase() || "?";
+
+  function askLogout() {
+    setAccountOpen(false);
+    setOpen(false);
+    setConfirmLogout(true);
+  }
 
   function closeNav() {
     window.setTimeout(() => setOpen(false), 0);
@@ -105,14 +129,18 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
           <button
             id="menuToggleBtn"
             type="button"
-            className="icon-btn inline-flex items-center justify-center rounded-full border border-line"
+            className={`menu-toggle icon-btn inline-flex items-center justify-center rounded-full border border-line ${open ? "is-open" : ""}`}
             aria-label={open ? "Tutup menu" : "Buka menu"}
             aria-expanded={open}
             aria-controls="appDrawer"
             onClick={() => setOpen((v) => !v)}
             suppressHydrationWarning
           >
-            <Menu size={20} aria-hidden />
+            <span className="burger" aria-hidden>
+              <span />
+              <span />
+              <span />
+            </span>
           </button>
           <Store size={20} className="shrink-0 text-accent" aria-hidden />
           <p className="flex min-w-0 items-center gap-2">
@@ -155,14 +183,31 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
               );
             })}
           </nav>
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-line bg-white/80 py-1 pr-3 pl-1">
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-white">
-              {initial}
-            </span>
-            <span className="min-w-0">
-              <span className="block max-w-[6rem] truncate text-sm font-medium sm:max-w-[9rem]">{user.name}</span>
-              <span className="block text-xs text-muted">{ROLE_LABEL[user.role]}</span>
-            </span>
+          <div className="relative" ref={accountRef}>
+            <button
+              type="button"
+              aria-expanded={accountOpen}
+              aria-haspopup="dialog"
+              onClick={() => setAccountOpen((value) => !value)}
+              className="flex min-w-0 items-center gap-2 rounded-full border border-line bg-white/80 py-1 pr-3 pl-1 text-left transition duration-ui hover:bg-accent-soft"
+            >
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-white">
+                {initial}
+              </span>
+              <span className="min-w-0">
+                <span className="block max-w-[6rem] truncate text-sm font-medium sm:max-w-[9rem]">{user.name}</span>
+                <span className="block text-xs text-muted">{ROLE_LABEL[user.role]}</span>
+              </span>
+            </button>
+            {accountOpen ? (
+              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-[120] w-60 rounded-2xl border border-line bg-white p-3 shadow-card">
+                <p className="truncate text-sm font-semibold">{user.name}</p>
+                <p className="mt-0.5 text-xs text-muted">{ROLE_LABEL[user.role]}</p>
+                <button type="button" className={`${ghostButtonClass} mt-3 h-11 w-full`} onClick={askLogout}>
+                  Keluar
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       </header>
@@ -204,12 +249,31 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
             );
           })}
         </nav>
-        <form action={logoutAction} className="border-t border-white/15 p-3 pb-5">
-          <button type="submit" className="btn w-full rounded-2xl border border-white/25 text-base text-white">
+        <div className="border-t border-white/15 p-3 pb-5">
+          <button type="button" className="btn w-full rounded-2xl border border-white/25 text-base text-white" onClick={askLogout}>
             Keluar
           </button>
-        </form>
+        </div>
       </aside>
+
+      {confirmLogout ? (
+        <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-ink/40 p-4" role="dialog" aria-modal="true" aria-labelledby="logout-title">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-card">
+            <p id="logout-title" className="text-base font-semibold">Ingin keluar dari akun?</p>
+            <p className="mt-1 text-sm text-muted">{user.name}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" className={`${ghostButtonClass} h-11 w-full`} onClick={() => setConfirmLogout(false)}>
+                Batal
+              </button>
+              <form action={logoutAction}>
+                <PrimaryButton type="submit" className="h-11 w-full">
+                  Keluar
+                </PrimaryButton>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <main className="min-w-0 flex-1 p-4 lg:p-6">{children}</main>
     </div>

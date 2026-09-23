@@ -121,6 +121,10 @@ export default async function SettingsPage({
                 <Download size={16} aria-hidden />
                 Unduh contoh F&B demo
               </a>
+              <a href="/api/backup/retail-demo" className={`${ghostButtonClass} h-full min-h-11 w-full gap-2 px-3 text-center sm:col-span-2`}>
+                <Download size={16} aria-hidden />
+                Unduh contoh retail demo
+              </a>
             </div>
             <ImportBackupForm />
             <p className="mt-4 rounded-xl bg-chip px-3 py-3 text-xs leading-5 text-muted">

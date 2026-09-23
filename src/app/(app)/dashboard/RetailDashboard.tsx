@@ -1,214 +1,268 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { ShoppingCart } from "lucide-react";
-import { money, num, formatIdDecimal } from "@/lib/format";
+import {
+  ArrowRight,
+  BarChart3,
+  Box,
+  Calendar,
+  PackagePlus,
+  ShoppingBag,
+  ShoppingCart,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  Wallet,
+} from "lucide-react";
+import { ProductImage } from "@/components/ProductImage";
+import { formatIdDecimal, money } from "@/lib/format";
 import type { retailDashboard } from "@/server/queries";
+import { CategoryDonut } from "./CategoryDonut";
+import { RetailBarChart } from "./RetailBarChart";
 
 type Data = Awaited<ReturnType<typeof retailDashboard>>;
 
-const WEEKDAYS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"] as const;
-const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
-const PAYMENT_LABEL: Record<string, string> = {
-  cash: "Tunai",
-  qris: "QRIS",
-  debit: "Debit",
-  credit: "Kredit",
-  ewallet: "E-wallet",
-};
-const SLICE = ["#0369a1", "#0ea5e9", "#38bdf8", "#7dd3fc", "#bae6fd"];
 const CARD = "rounded-2xl border border-line bg-surface p-5 shadow-card";
+const WEEKDAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"] as const;
+const MONTHS = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+] as const;
+const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
 
-function dayLabel(value: string | Date) {
-  const shifted = new Date(new Date(value).getTime() + JAKARTA_OFFSET_MS);
-  return WEEKDAYS[shifted.getUTCDay()];
+function jakartaDate(value: string | Date | number = Date.now()) {
+  return new Date(new Date(value).getTime() + JAKARTA_OFFSET_MS);
 }
 
-export function RetailDashboard({ data }: { data: Data }) {
-  const trx = Number(data.today.trx_count || 0);
-  const revenue = num(data.today.revenue);
-  const avg = trx ? revenue / trx : 0;
-  const maxRevenue = Math.max(...data.daily.map((row) => num(row.revenue)), 1);
-  const peak = Math.max(...data.daily.map((row) => num(row.revenue)));
-  const slices = data.payments
-    .map((row) => ({ method: String(row.method), label: PAYMENT_LABEL[String(row.method)] ?? String(row.method), amount: num(row.amount) }))
-    .filter((row) => row.amount > 0);
-  const payTotal = slices.reduce((sum, row) => sum + row.amount, 0);
-  let cursor = 0;
-  const donut = slices
-    .map((row, index) => {
-      const pct = payTotal ? (row.amount / payTotal) * 100 : 0;
-      const color = SLICE[index % SLICE.length];
-      const stop = `${color} ${cursor}% ${cursor + pct}%`;
-      cursor += pct;
-      return stop;
-    })
-    .join(", ");
-  const spark = data.daily.map((row, index) => {
-    const x = data.daily.length <= 1 ? 0 : (index / (data.daily.length - 1)) * 120;
-    const y = 32 - (num(row.revenue) / maxRevenue) * 26;
-    return `${x},${y}`;
-  });
+function greeting(name: string) {
+  const hour = jakartaDate().getUTCHours();
+  const hello = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 19 ? "Selamat sore" : "Selamat malam";
+  const first = name.trim().split(/\s+/)[0] || "Admin";
+  return `${hello}, ${first}`;
+}
 
+function formatJakarta(value: string | Date | number) {
+  const date = jakartaDate(value);
+  return `${WEEKDAYS[date.getUTCDay()]}, ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+function Delta({ current, previous }: { current: number; previous: number }) {
+  if (previous <= 0 && current <= 0) {
+    return <p className="mt-1 text-xs text-muted">0% vs kemarin</p>;
+  }
+  if (previous <= 0) {
+    return <p className="mt-1 text-xs font-medium text-ok">Baru vs kemarin</p>;
+  }
+  const pct = Math.round(((current - previous) / previous) * 100);
+  const up = pct >= 0;
+  const Icon = up ? TrendingUp : TrendingDown;
   return (
-    <div>
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Ringkasan</h1>
-          <p className="mt-1 text-sm text-muted">Penjualan barang, stok, dan pembayaran hari ini.</p>
+    <p className={`mt-1 inline-flex items-center gap-1 text-xs font-medium ${up ? "text-ok" : "text-danger"}`}>
+      <Icon size={14} aria-hidden />
+      {Math.abs(pct)}% vs kemarin
+    </p>
+  );
+}
+
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  children,
+}: {
+  icon: typeof Wallet;
+  label: string;
+  value: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={CARD}>
+      <div className="flex items-start gap-3">
+        <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+          <Icon size={20} aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm text-muted">{label}</p>
+          <p className="mt-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">{value}</p>
+          {children}
         </div>
-        <Link
-          href="/pos"
-          className="btn inline-flex items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-white transition-all duration-200 hover:shadow-md active:scale-95"
-        >
-          <ShoppingCart size={16} aria-hidden />
-          Kasir
-        </Link>
+      </div>
+    </section>
+  );
+}
+
+const ACTIONS = [
+  { href: "/pos", label: "Mulai transaksi", icon: ShoppingCart },
+  { href: "/products/new", label: "Tambah produk", icon: PackagePlus },
+  { href: "/products", label: "Kelola stok", icon: Box },
+  { href: "/reports", label: "Lihat laporan", icon: BarChart3 },
+] as const;
+
+export function RetailDashboard({ data, userName }: { data: Data; userName: string }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{greeting(userName)}</h1>
+          <p className="mt-1 text-sm text-muted">Kelola toko retail dengan lebih mudah.</p>
+        </div>
+        <p className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-surface px-3 text-sm shadow-card">
+          <Calendar size={16} aria-hidden />
+          {formatJakarta(Date.now())}
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi icon={Wallet} label="Total penjualan" value={money(data.kpi.revenueToday)}>
+          <Delta current={data.kpi.revenueToday} previous={data.kpi.revenueYesterday} />
+        </Kpi>
+        <Kpi icon={ShoppingBag} label="Jumlah transaksi" value={String(data.kpi.trxToday)}>
+          <Delta current={data.kpi.trxToday} previous={data.kpi.trxYesterday} />
+        </Kpi>
+        <Kpi icon={Box} label="Produk terjual" value={String(data.kpi.itemsToday)}>
+          <Delta current={data.kpi.itemsToday} previous={data.kpi.itemsYesterday} />
+        </Kpi>
+        <Kpi icon={Users} label="Pelanggan tercatat" value={String(data.kpi.customersToday)}>
+          <Delta current={data.kpi.customersToday} previous={data.kpi.customersYesterday} />
+        </Kpi>
+      </div>
+
+      <div className="grid items-stretch gap-4 xl:grid-cols-12">
+        <section className={`${CARD} h-full xl:col-span-6`}>
+          <RetailBarChart today={data.hourly} week={data.week} month={data.month} compare={data.compare} />
+        </section>
+        <section className={`${CARD} h-full xl:col-span-3`}>
+          <CategoryDonut slices={data.categories} />
+        </section>
+        <section className={`${CARD} flex h-full flex-col justify-between bg-accent-soft xl:col-span-3`}>
+          <div>
+            <p className="text-sm font-medium text-accent">Katalog retail</p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink">Produk siap dijual di kasir</h2>
+            <p className="mt-2 text-sm text-muted">Harga, stok, dan barang terlaris mengikuti katalog retail.</p>
+          </div>
+          <Link
+            href="/products"
+            className="btn mt-6 inline-flex w-fit items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-white"
+          >
+            Lihat produk
+            <ArrowRight size={16} aria-hidden />
+          </Link>
+        </section>
       </div>
 
       <div className="grid items-stretch gap-4 lg:grid-cols-3">
-        <section className={`${CARD} flex h-full min-h-[320px] flex-col lg:col-span-2`}>
-          <h2 className="font-semibold">Omset</h2>
-          <p className="text-sm text-muted">Sembilan hari terakhir</p>
-          <div className="mt-4 flex min-h-0 flex-1 items-end gap-2">
-            {data.daily.map((row) => {
-              const value = num(row.revenue);
-              const pct = value <= 0 ? 4 : Math.max(12, Math.round((value / maxRevenue) * 100));
-              const hot = value > 0 && value === peak;
-              return (
-                <div key={String(row.day)} className="flex h-full min-w-0 flex-1 flex-col items-center gap-2">
-                  <div className="flex min-h-0 w-full flex-1 items-end justify-center">
-                    <div
-                      className="w-full max-w-8 rounded-t-xl"
-                      style={{
-                        height: `${pct}%`,
-                        background: hot
-                          ? "#0369a1"
-                          : "repeating-linear-gradient(-45deg, #7dd3fc 0 3px, #e0f2fe 3px 7px)",
-                      }}
-                      title={money(value)}
-                    />
-                  </div>
-                  <span className="text-[11px] text-muted">{dayLabel(row.day)}</span>
-                </div>
-              );
-            })}
+        <section className={`${CARD} h-full`}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="font-semibold">Produk terlaris</h2>
+            <Link href="/products" className="shrink-0 text-sm text-accent hover:underline">
+              Lihat semua
+            </Link>
           </div>
-        </section>
-
-        <div className="grid h-full grid-rows-3 gap-4">
-          <article className="flex h-full flex-col justify-between rounded-2xl bg-sidebar p-5 text-white shadow-card">
-            <div>
-              <p className="text-sm text-white/70">Nota hari ini</p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight">{trx}</p>
-              <p className="mt-1 text-xs text-white/70">Transaksi selesai</p>
-            </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/20">
-              <div className="h-full rounded-full bg-white" style={{ width: trx ? "100%" : "0%" }} />
-            </div>
-          </article>
-          <article
-            className="flex h-full flex-col justify-center rounded-2xl p-5 text-white shadow-card"
-            style={{ background: "linear-gradient(145deg, #0ea5e9, #0369a1)" }}
-          >
-            <p className="text-sm text-white/80">Omset hari ini</p>
-            <p className="mt-2 text-3xl font-semibold tracking-tight">{money(revenue)}</p>
-            <p className="mt-1 text-xs text-white/80">Penjualan selesai</p>
-          </article>
-          <article className="flex h-full flex-col justify-between rounded-2xl border border-line bg-[#f8fafc] p-5 shadow-card">
-            <div>
-              <p className="text-sm text-muted">Rata-rata nota</p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight text-ink">{money(avg)}</p>
-              <p className="mt-1 text-xs text-muted">Omset / transaksi</p>
-            </div>
-            <svg viewBox="0 0 120 36" className="mt-3 h-10 w-full" aria-hidden>
-              <polyline fill="none" stroke="#0369a1" strokeWidth="2" points={spark.join(" ")} />
-            </svg>
-          </article>
-        </div>
-      </div>
-
-      <div className="mt-4 grid items-stretch gap-4 md:grid-cols-3">
-        <section className={`${CARD} flex h-full min-h-[220px] flex-col`}>
-          <h2 className="font-semibold">Metode bayar</h2>
-          <p className="text-sm text-muted">Hari ini</p>
-          {slices.length === 0 ? (
-            <p className="mt-6 text-sm text-muted">Belum ada pembayaran hari ini.</p>
+          {data.top.length === 0 ? (
+            <p className="py-6 text-sm text-muted">Belum ada barang retail terjual hari ini.</p>
           ) : (
-            <div className="mt-4 flex flex-1 items-center gap-4">
-              <div
-                className="relative size-28 shrink-0 rounded-full"
-                style={{ background: `conic-gradient(${donut})` }}
-                aria-hidden
-              >
-                <span className="absolute inset-4 rounded-full bg-surface" />
-              </div>
-              <ul className="min-w-0 space-y-2 text-sm">
-                {slices.map((row, index) => (
-                  <li key={row.method} className="flex items-center justify-between gap-3">
-                    <span className="inline-flex min-w-0 items-center gap-2">
-                      <span className="size-2.5 shrink-0 rounded-full" style={{ background: SLICE[index % SLICE.length] }} />
-                      <span className="truncate">{row.label}</span>
-                    </span>
-                    <span className="shrink-0 text-muted">{payTotal ? Math.round((row.amount / payTotal) * 100) : 0}%</span>
-                  </li>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted">
+                  <th className="py-2 pr-3 font-medium">Produk</th>
+                  <th className="px-2 py-2 font-medium">Terjual</th>
+                  <th className="py-2 pl-2 text-right font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.top.map((row, index) => (
+                  <tr key={row.name} className="border-t border-line">
+                    <td className="py-2.5 pr-3">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="w-4 shrink-0 text-xs text-muted">{index + 1}</span>
+                        <ProductImage kind="products" filename={row.image} name={row.name} className="size-9 shrink-0 rounded-lg" />
+                        <span className="min-w-0 truncate font-medium">{row.name}</span>
+                      </span>
+                    </td>
+                    <td className="px-2 py-2.5 text-muted">{row.qty}</td>
+                    <td className="py-2.5 pl-2 text-right whitespace-nowrap">{money(row.revenue)}</td>
+                  </tr>
                 ))}
-              </ul>
-            </div>
+              </tbody>
+            </table>
           )}
         </section>
 
-        <section className={`${CARD} flex h-full min-h-[220px] flex-col`}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-semibold">Transaksi terakhir</h2>
-            <Link href="/transactions" className="text-sm text-accent transition-all duration-200 hover:underline active:scale-95">
-              Semua
+        <section className={`${CARD} h-full`}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="font-semibold">Transaksi terbaru</h2>
+            <Link href="/transactions" className="shrink-0 text-sm text-accent hover:underline">
+              Lihat semua
             </Link>
           </div>
           {data.recent.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">Belum ada transaksi.</p>
+            <p className="py-6 text-sm text-muted">Belum ada transaksi retail.</p>
           ) : (
-            <ul className="mt-3 flex-1 divide-y divide-line text-sm">
+            <ul className="divide-y divide-line text-sm">
               {data.recent.map((row) => (
-                <li key={row.transaction_number} className="flex items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{row.transaction_number}</p>
-                    <p className="text-xs text-muted">{row.status === "completed" ? "Selesai" : "Batal"}</p>
-                  </div>
-                  <span className="shrink-0">{money(row.total)}</span>
+                <li key={row.id}>
+                  <Link href={`/transactions/${row.id}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-2 py-2.5">
+                    <span className="text-muted">{row.time}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{row.number}</span>
+                      <span className="block truncate text-xs text-muted">{row.customer}</span>
+                    </span>
+                    <span className="shrink-0 whitespace-nowrap">{money(row.total)}</span>
+                  </Link>
                 </li>
               ))}
             </ul>
           )}
         </section>
 
-        <section className={`${CARD} flex h-full min-h-[220px] flex-col overflow-hidden`}>
-          <h2 className="font-semibold">Penjualan produk</h2>
-          <p className="text-sm text-muted">Terlaris hari ini</p>
-          {data.products.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">Belum ada barang retail terjual hari ini.</p>
-          ) : (
-            <div className="mt-3 -mx-5 flex-1 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted">
-                    <th className="px-5 py-2 font-medium">Nama</th>
-                    <th className="px-3 py-2 font-medium">Stok</th>
-                    <th className="px-3 py-2 font-medium">Harga</th>
-                    <th className="px-5 py-2 text-right font-medium">Terjual</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.products.map((row) => (
-                    <tr key={row.product_name} className="border-t border-line">
-                      <td className="px-5 py-2.5 font-medium">{row.product_name}</td>
-                      <td className="px-3 py-2.5 text-muted">{formatIdDecimal(row.current_stock)}</td>
-                      <td className="px-3 py-2.5">{money(row.unit_price)}</td>
-                      <td className="px-5 py-2.5 text-right">{row.qty}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <section className={`${CARD} flex h-full flex-col`}>
+          <h2 className="font-semibold">Aksi cepat</h2>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {ACTIONS.map((action) => (
+              <Link
+                key={action.href}
+                href={action.href}
+                className="flex min-h-16 flex-col justify-between rounded-xl border border-line bg-chip px-3 py-2 text-sm font-medium transition-colors hover:border-accent"
+              >
+                <action.icon size={16} aria-hidden />
+                {action.label}
+              </Link>
+            ))}
+          </div>
+          <div className="mt-4 border-t border-line pt-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="font-semibold">Stok menipis</h2>
+              <Link href="/products" className="shrink-0 text-sm text-accent hover:underline">
+                Lihat semua
+              </Link>
             </div>
-          )}
+            {data.lowStock.length === 0 ? (
+              <p className="text-sm text-muted">Semua barang di atas stok minimum.</p>
+            ) : (
+              <ul className="space-y-2">
+                {data.lowStock.map((row) => (
+                  <li key={row.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{row.name}</span>
+                      <span className="text-xs text-muted">Sisa {formatIdDecimal(row.stock)}</span>
+                    </span>
+                    <Link href={`/products/${row.id}`} className="shrink-0 text-sm font-medium text-danger hover:underline">
+                      Restock
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
       </div>
     </div>
