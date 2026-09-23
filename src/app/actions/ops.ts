@@ -155,6 +155,10 @@ export async function saveProduct(formData: FormData) {
   const [created] = await db.insert(products).values({ ...values, image }).returning({ id: products.id });
   revalidatePath("/products");
   revalidatePath("/pos");
+  if (str(formData, "next") === "desk") {
+    const packQuery = catalogPack === "retail" ? "&pack=retail" : "";
+    redirect(`/products?edit=${created.id}&id=${created.id}${packQuery}`);
+  }
   redirect(`/products/${created.id}`);
 }
 
@@ -163,6 +167,18 @@ export async function deleteProduct(formData: FormData) {
   guard(session.role, "products");
   await getDb().delete(products).where(eq(products.id, str(formData, "id")));
   revalidatePath("/products");
+  revalidatePath("/pos");
+  if (str(formData, "next") === "desk") redirect("/products");
+}
+
+export async function toggleProductStatus(formData: FormData) {
+  const session = await requireSession();
+  guard(session.role, "products");
+  const id = str(formData, "id");
+  const status = str(formData, "status") === "inactive" ? "inactive" : "active";
+  await getDb().update(products).set({ status, updatedAt: new Date() }).where(eq(products.id, id));
+  revalidatePath("/products");
+  revalidatePath("/pos");
 }
 
 export async function saveVariants(productId: string, raw: string) {
@@ -198,6 +214,7 @@ export async function saveVariants(productId: string, raw: string) {
     }
   }
   revalidatePath(`/products/${productId}`);
+  revalidatePath("/products");
 }
 
 export async function saveProductAddons(productId: string, addonIds: string[]) {
@@ -209,6 +226,7 @@ export async function saveProductAddons(productId: string, addonIds: string[]) {
     await db.insert(productAddons).values({ productId, addonId });
   }
   revalidatePath(`/products/${productId}`);
+  revalidatePath("/products");
 }
 
 export async function saveAddon(formData: FormData) {
@@ -443,6 +461,7 @@ export async function checkoutAction(payload: {
   tableNumber?: string;
   customerName?: string;
   discount?: number;
+  note?: string;
   payment: { method: string; amount?: number };
 }) {
   const session = await requireSession();

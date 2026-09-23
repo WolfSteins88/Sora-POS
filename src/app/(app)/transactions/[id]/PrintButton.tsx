@@ -33,9 +33,13 @@ function receiptText(trx: Trx, settings: Record<string, string>) {
 export function PrintButton({
   transaction,
   settings,
+  label = "Cetak struk",
+  variant = "primary",
 }: {
   transaction: Trx;
   settings: Record<string, string>;
+  label?: string;
+  variant?: "primary" | "ghost";
 }) {
   async function print() {
     const text = receiptText(transaction, settings);
@@ -75,9 +79,21 @@ export function PrintButton({
     }
   }
 
+  if (variant === "ghost") {
+    return (
+      <button
+        type="button"
+        onClick={() => void print()}
+        className="btn inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-line px-3 text-sm"
+      >
+        {label}
+      </button>
+    );
+  }
+
   return (
     <PrimaryButton type="button" onClick={() => void print()}>
-      Cetak struk
+      {label}
     </PrimaryButton>
   );
 }

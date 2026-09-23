@@ -1,168 +1,463 @@
-import { getSql } from "@/lib/db";
-import { Card, PageHeader, inputClass } from "@/components/ui";
+import Link from "next/link";
+import { Banknote, CreditCard, Download, Info, Percent, QrCode, Receipt, ShoppingCart, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { ProductImage } from "@/components/ProductImage";
+import { formatIdDecimal, money } from "@/lib/format";
+import { reportDesk } from "@/server/queries";
+import { HourBars } from "./HourBars";
+import { ReportDonut } from "./ReportDonut";
+import { ReportFilters } from "./ReportFilters";
 
-const TYPES = [
-  ["sales", "Penjualan"],
-  ["products", "Produk"],
-  ["categories", "Kategori"],
-  ["payments", "Pembayaran"],
-  ["cashiers", "Kasir"],
-  ["shifts", "Shift"],
-  ["inventory", "Stok"],
+const TABS = [
+  ["ringkasan", "Ringkasan"],
+  ["penjualan", "Penjualan"],
+  ["produk", "Produk"],
+  ["kasir", "Kasir"],
+  ["pembayaran", "Pembayaran"],
+  ["pajak", "Pajak & Biaya"],
+  ["shift", "Shift"],
+  ["stok", "Stok"],
 ] as const;
 
-function range(preset: string, from?: string, to?: string) {
-  const today = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  if (preset === "yesterday") {
-    const d = new Date(today);
-    d.setDate(d.getDate() - 1);
-    return [iso(d), iso(d)];
-  }
-  if (preset === "this_week") {
-    const d = new Date(today);
-    const day = d.getDay() || 7;
-    d.setDate(d.getDate() - day + 1);
-    return [iso(d), iso(today)];
-  }
-  if (preset === "this_month") {
-    return [`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`, iso(today)];
-  }
-  if (preset === "custom") return [from || iso(today), to || iso(today)];
-  return [iso(today), iso(today)];
+type Tab = (typeof TABS)[number][0];
+
+const PAYMENT_LABEL: Record<string, string> = {
+  cash: "Tunai",
+  qris: "QRIS",
+  debit: "Debit",
+  credit: "Kredit",
+  ewallet: "E-wallet",
+};
+
+const PAYMENT_ICON = {
+  cash: Banknote,
+  qris: QrCode,
+  debit: CreditCard,
+  credit: CreditCard,
+  ewallet: Wallet,
+} as const;
+
+const PAYMENT_TONE: Record<string, string> = {
+  cash: "bg-ok-soft text-ok",
+  qris: "bg-accent-soft text-accent",
+  debit: "bg-chip text-ink",
+  credit: "bg-warn-soft text-warn",
+  ewallet: "bg-accent-soft text-accent",
+};
+
+const PILL_TONE = ["bg-accent-soft text-accent", "bg-ok-soft text-ok", "bg-warn-soft text-warn", "bg-chip text-ink"];
+const CARD = "rounded-2xl border border-line bg-surface p-5 shadow-card";
+
+function isTab(value: string | undefined): value is Tab {
+  return TABS.some(([key]) => key === value);
+}
+
+function href(query: { from: string; to: string; cashier: string; method: string }, tab: Tab) {
+  const params = new URLSearchParams();
+  if (tab !== "ringkasan") params.set("tab", tab);
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  if (query.cashier) params.set("cashier", query.cashier);
+  if (query.method) params.set("method", query.method);
+  const text = params.toString();
+  return text ? `/reports?${text}` : "/reports";
+}
+
+function longDate(iso: string) {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1)),
+  );
+}
+
+function clock(iso: string) {
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+function Delta({ current, previous }: { current: number; previous: number }) {
+  if (previous === 0 && current === 0) return <p className="mt-auto pt-2 text-xs leading-snug text-muted">0% vs. periode sebelumnya</p>;
+  const pct = previous === 0 ? 100 : Math.round(((current - previous) / previous) * 100);
+  const up = pct >= 0;
+  const Icon = up ? TrendingUp : TrendingDown;
+  return (
+    <p className={`mt-auto flex flex-wrap items-center gap-1 pt-2 text-xs font-medium leading-snug ${up ? "text-ok" : "text-danger"}`}>
+      <Icon size={14} aria-hidden />
+      {up ? "+" : ""}
+      {pct}% vs. periode sebelumnya
+    </p>
+  );
+}
+
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  tone,
+  current,
+  previous,
+}: {
+  icon: typeof Receipt;
+  label: string;
+  value: string;
+  tone: string;
+  current: number;
+  previous: number;
+}) {
+  return (
+    <article className={`${CARD} flex h-full min-w-0 flex-col`}>
+      <div className="flex items-start justify-between gap-3">
+        <span className={`inline-flex size-10 shrink-0 items-center justify-center rounded-xl ${tone}`}>
+          <Icon size={18} aria-hidden />
+        </span>
+        <p className="min-w-0 text-right text-sm leading-snug text-muted">{label}</p>
+      </div>
+      <p className="mt-4 text-2xl font-semibold tracking-tight break-words">{value}</p>
+      <Delta current={current} previous={previous} />
+    </article>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return <p className="py-10 text-center text-sm text-muted">{text}</p>;
 }
 
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ tab?: string; from?: string; to?: string; cashier?: string; method?: string }>;
 }) {
   const params = await searchParams;
-  const type = TYPES.some((t) => t[0] === params.type) ? params.type! : "sales";
-  const preset = params.range || "today";
-  const [from, to] = range(preset, params.from, params.to);
-  const sql = getSql();
-  let columns: string[] = [];
-  let rows: Record<string, unknown>[] = [];
-
-  if (type === "sales") {
-    columns = ["Tanggal", "Jumlah Transaksi", "Total Penjualan"];
-    rows = await sql`
-      SELECT created_at::date AS d, COUNT(*)::int AS trx_count, COALESCE(SUM(total),0)::text AS total
-      FROM transactions WHERE status='completed' AND created_at::date BETWEEN ${from}::date AND ${to}::date
-      GROUP BY created_at::date ORDER BY d DESC
-    `;
-  } else if (type === "products") {
-    columns = ["Produk", "Qty Terjual", "Revenue"];
-    rows = await sql`
-      SELECT ti.product_name, SUM(ti.quantity)::int AS qty, COALESCE(SUM(ti.subtotal),0)::text AS revenue
-      FROM transaction_items ti JOIN transactions t ON t.id = ti.transaction_id
-      WHERE t.status='completed' AND t.created_at::date BETWEEN ${from}::date AND ${to}::date
-      GROUP BY ti.product_id, ti.product_name ORDER BY SUM(ti.subtotal) DESC
-    `;
-  } else if (type === "categories") {
-    columns = ["Kategori", "Qty Terjual", "Revenue"];
-    rows = await sql`
-      SELECT c.name AS category_name, SUM(ti.quantity)::int AS qty, COALESCE(SUM(ti.subtotal),0)::text AS revenue
-      FROM transaction_items ti
-      JOIN transactions t ON t.id = ti.transaction_id
-      JOIN products p ON p.id = ti.product_id
-      JOIN categories c ON c.id = p.category_id
-      WHERE t.status='completed' AND t.created_at::date BETWEEN ${from}::date AND ${to}::date
-      GROUP BY c.id, c.name ORDER BY SUM(ti.subtotal) DESC
-    `;
-  } else if (type === "payments") {
-    columns = ["Metode", "Jumlah Transaksi", "Total"];
-    rows = await sql`
-      SELECT p.method, COUNT(*)::int AS trx_count, COALESCE(SUM(p.amount - p.change_amount),0)::text AS total
-      FROM payments p JOIN transactions t ON t.id = p.transaction_id
-      WHERE t.status='completed' AND t.created_at::date BETWEEN ${from}::date AND ${to}::date
-      GROUP BY p.method ORDER BY SUM(p.amount - p.change_amount) DESC
-    `;
-  } else if (type === "cashiers") {
-    columns = ["Kasir", "Jumlah Transaksi", "Total Penjualan"];
-    rows = await sql`
-      SELECT u.name AS cashier_name, COUNT(*)::int AS trx_count, COALESCE(SUM(t.total),0)::text AS total
-      FROM transactions t JOIN users u ON u.id = t.user_id
-      WHERE t.status='completed' AND t.created_at::date BETWEEN ${from}::date AND ${to}::date
-      GROUP BY u.id, u.name ORDER BY SUM(t.total) DESC
-    `;
-  } else if (type === "shifts") {
-    columns = ["Kasir", "Dibuka", "Ditutup", "Modal Awal", "Cash Sales", "Actual", "Selisih"];
-    rows = await sql`
-      SELECT u.name AS cashier_name, s.opening_at, s.closing_at, s.opening_cash::text, s.cash_sales::text,
-             s.closing_cash::text, s.difference::text
-      FROM shifts s JOIN users u ON u.id = s.user_id
-      WHERE s.opening_at::date BETWEEN ${from}::date AND ${to}::date
-      ORDER BY s.opening_at DESC
-    `;
-  } else {
-    columns = ["Jenis", "Nama", "SKU", "Stok", "Minimum", "Nilai"];
-    const goods = await sql`
-      SELECT 'Barang' AS jenis, name, sku, current_stock::text, minimum_stock::text, (current_stock * cost)::text AS nilai
-      FROM products WHERE kind='goods' ORDER BY name
-    `;
-    const bahan = await sql`
-      SELECT 'Bahan' AS jenis, name, sku, current_stock::text, minimum_stock::text, (current_stock * cost)::text AS nilai
-      FROM inventory_items ORDER BY name
-    `;
-    rows = [...goods, ...bahan];
-  }
+  const tab: Tab = isTab(params.tab) ? params.tab : "ringkasan";
+  const desk = await reportDesk({
+    from: params.from,
+    to: params.to,
+    cashierId: params.cashier,
+    method: params.method,
+  });
+  const query = { from: desk.from, to: desk.to, cashier: desk.cashierId, method: desk.method };
+  const paymentTotal = desk.payments.reduce((sum, row) => sum + row.total, 0);
+  const exportParams = new URLSearchParams({ tab, from: desk.from, to: desk.to });
+  if (desk.cashierId) exportParams.set("cashier", desk.cashierId);
+  if (desk.method) exportParams.set("method", desk.method);
 
   return (
     <div>
-      <PageHeader title="Laporan" description="Tujuh laporan yang sama dengan kasir PHP, plus stok barang." />
-      <form className="mb-4 flex flex-wrap gap-2">
-        <select name="type" defaultValue={type} className={inputClass}>
-          {TYPES.map(([k, l]) => (
-            <option key={k} value={k}>
-              {l}
-            </option>
-          ))}
-        </select>
-        <select name="range" defaultValue={preset} className={inputClass}>
-          <option value="today">Hari ini</option>
-          <option value="yesterday">Kemarin</option>
-          <option value="this_week">Minggu ini</option>
-          <option value="this_month">Bulan ini</option>
-          <option value="custom">Kustom</option>
-        </select>
-        <input name="from" type="date" defaultValue={from} className={inputClass} />
-        <input name="to" type="date" defaultValue={to} className={inputClass} />
-        <button className="btn rounded-lg border px-4 text-sm">Tampilkan</button>
-        <a
-          className="btn inline-flex items-center rounded-lg border px-4 text-sm"
-          href={`/api/reports/export?type=${type}&from=${from}&to=${to}`}
-        >
-          CSV
-        </a>
-      </form>
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted">
-                {columns.map((c) => (
-                  <th key={c} className="py-2">
-                    {c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={i} className="border-t border-line">
-                    {Object.values(row).map((v, j) => (
-                    <td key={j} className="py-2">
-                      {v instanceof Date ? v.toLocaleString("id-ID") : String(v ?? "-")}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight">Laporan</h1>
+          <p className="mt-1 text-sm text-muted">Analisis penjualan, transaksi, produk, dan aktivitas kas dalam satu tempat.</p>
         </div>
-      </Card>
+        <a href={`/api/reports/export?${exportParams.toString()}`} className="btn inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-white px-4 text-sm font-medium">
+          <Download size={15} aria-hidden />
+          Ekspor Laporan
+        </a>
+      </div>
+
+      <ReportFilters tab={tab} from={desk.from} to={desk.to} cashier={desk.cashierId} method={desk.method} cashiers={desk.cashiers} />
+
+      <div className="mt-4 grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi icon={Banknote} label="Total Penjualan" value={money(desk.kpi.sales)} tone="bg-ok-soft text-ok" current={desk.kpi.sales} previous={desk.kpi.prevSales} />
+        <Kpi icon={ShoppingCart} label="Jumlah Transaksi" value={String(desk.kpi.trx)} tone="bg-accent-soft text-accent" current={desk.kpi.trx} previous={desk.kpi.prevTrx} />
+        <Kpi icon={Receipt} label="Rata-rata Transaksi" value={money(desk.kpi.average)} tone="bg-warn-soft text-warn" current={desk.kpi.average} previous={desk.kpi.prevAverage} />
+        <Kpi icon={Percent} label="Total Diskon" value={money(desk.kpi.discount)} tone="bg-danger/10 text-danger" current={desk.kpi.discount} previous={desk.kpi.prevDiscount} />
+      </div>
+
+      <div className="mt-4 flex gap-1 overflow-x-auto">
+        {TABS.map(([key, label]) => (
+          <Link
+            key={key}
+            href={href(query, key)}
+            className={`inline-flex h-10 shrink-0 items-center rounded-full px-3 text-sm font-medium transition-colors duration-ui ${
+              tab === key ? "bg-accent text-white" : "text-muted hover:bg-accent-soft"
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
+      {tab === "ringkasan" ? (
+        <div className="mt-4 space-y-4">
+          <div className="grid items-stretch gap-4 xl:grid-cols-2">
+            <section className={`${CARD} flex h-full min-w-0 flex-col`}>
+              <HourBars hours={desk.hours} />
+            </section>
+            <section className={`${CARD} flex h-full min-w-0 flex-col`}>
+              <ReportDonut slices={desk.categories} />
+            </section>
+          </div>
+          <div className="grid items-stretch gap-4 xl:grid-cols-2">
+            <section className={`${CARD} flex h-full min-w-0 flex-col`}>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="min-w-0 font-semibold">Produk Terlaris</h2>
+                <Link href={href(query, "produk")} className="shrink-0 text-sm font-medium text-accent">
+                  Lihat Semua
+                </Link>
+              </div>
+              {desk.products.length === 0 ? (
+                <Empty text="Belum ada produk terjual pada periode ini." />
+              ) : (
+                <table className="w-full table-fixed text-left text-sm">
+                  <thead className="text-xs uppercase tracking-wide text-muted">
+                    <tr>
+                      <th className="w-8 pb-2 font-medium">#</th>
+                      <th className="pb-2 font-medium">Produk</th>
+                      <th className="w-28 pb-2 font-medium">Kategori</th>
+                      <th className="w-16 pb-2 font-medium">Terjual</th>
+                      <th className="w-36 pb-2 text-right font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {desk.products.slice(0, 5).map((row, index) => (
+                      <tr key={row.id} className="h-14 border-t border-line">
+                        <td className="pr-2 text-muted">{index + 1}</td>
+                        <td className="pr-2">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <ProductImage kind="products" filename={row.image} name={row.name} className="size-9 shrink-0 rounded-xl object-cover text-xs" />
+                            <span className="truncate font-medium">{row.name}</span>
+                          </span>
+                        </td>
+                        <td className="pr-2">
+                          <span className={`inline-block max-w-full truncate rounded-full px-2.5 py-1 text-xs font-medium ${PILL_TONE[index % PILL_TONE.length]}`}>{row.category}</span>
+                        </td>
+                        <td className="pr-2">{row.qty}</td>
+                        <td className="text-right font-medium">{money(row.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+            <section className={`${CARD} flex h-full min-w-0 flex-col`}>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="min-w-0 font-semibold">Metode Pembayaran</h2>
+                <Link href={href(query, "pembayaran")} className="shrink-0 text-sm font-medium text-accent">
+                  Lihat Semua
+                </Link>
+              </div>
+              <table className="w-full table-fixed text-left text-sm">
+                <thead className="text-xs uppercase tracking-wide text-muted">
+                  <tr>
+                    <th className="pb-2 font-medium">Metode</th>
+                    <th className="w-24 pb-2 font-medium">Transaksi</th>
+                    <th className="w-36 pb-2 font-medium">Total</th>
+                    <th className="w-16 pb-2 text-right font-medium">%</th>
+                  </tr>
+                </thead>
+                  <tbody>
+                    {desk.payments.map((row) => {
+                      const Icon = PAYMENT_ICON[row.method as keyof typeof PAYMENT_ICON] ?? Wallet;
+                      const pct = paymentTotal > 0 ? Math.round((row.total / paymentTotal) * 100) : 0;
+                      return (
+                        <tr key={row.method} className="h-14 border-t border-line">
+                          <td className="pr-2">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full ${PAYMENT_TONE[row.method] ?? "bg-chip text-ink"}`}>
+                                <Icon size={16} aria-hidden />
+                              </span>
+                              <span className="truncate">{PAYMENT_LABEL[row.method] ?? row.method}</span>
+                            </span>
+                          </td>
+                          <td className="pr-2">{row.trx}</td>
+                          <td className="pr-2 font-medium">{money(row.total)}</td>
+                          <td className="text-right">{pct}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+            </section>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "penjualan" ? (
+        <section className={`${CARD} mt-4`}>
+          {desk.sales.length === 0 ? (
+            <Empty text="Belum ada penjualan pada periode ini." />
+          ) : (
+            <Table
+              columns={["Tanggal", "Jumlah Transaksi", "Total Penjualan"]}
+              rows={desk.sales.map((row) => [longDate(row.date), String(row.trx), money(row.total)])}
+            />
+          )}
+        </section>
+      ) : null}
+
+      {tab === "produk" ? (
+        <section className={`${CARD} mt-4`}>
+          {desk.products.length === 0 ? (
+            <Empty text="Belum ada produk terjual pada periode ini." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[36rem] text-left text-sm">
+                <thead className="text-xs uppercase tracking-wide text-muted">
+                  <tr>
+                    <th className="pb-2 font-medium">Produk</th>
+                    <th className="pb-2 font-medium">Kategori</th>
+                    <th className="pb-2 font-medium">Terjual</th>
+                    <th className="pb-2 text-right font-medium">Total Penjualan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {desk.products.map((row, index) => (
+                    <tr key={row.id} className="border-t border-line">
+                      <td className="py-2.5 pr-3">
+                        <span className="inline-flex items-center gap-2 font-medium">
+                          <ProductImage kind="products" filename={row.image} name={row.name} className="size-9 rounded-xl object-cover text-xs" />
+                          {row.name}
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${PILL_TONE[index % PILL_TONE.length]}`}>{row.category}</span>
+                      </td>
+                      <td className="py-2.5 pr-3">{row.qty}</td>
+                      <td className="py-2.5 text-right font-medium">{money(row.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {tab === "kasir" ? (
+        <section className={`${CARD} mt-4`}>
+          {desk.cashierRows.length === 0 ? (
+            <Empty text="Belum ada penjualan kasir pada periode ini." />
+          ) : (
+            <Table
+              columns={["Kasir", "Jumlah Transaksi", "Total Penjualan"]}
+              rows={desk.cashierRows.map((row) => [row.name, String(row.trx), money(row.total)])}
+            />
+          )}
+        </section>
+      ) : null}
+
+      {tab === "pembayaran" ? (
+        <section className={`${CARD} mt-4`}>
+          <Table
+            columns={["Metode", "Jumlah Transaksi", "Total", "Persentase"]}
+            rows={desk.payments.map((row) => [
+              PAYMENT_LABEL[row.method] ?? row.method,
+              String(row.trx),
+              money(row.total),
+              `${paymentTotal > 0 ? Math.round((row.total / paymentTotal) * 100) : 0}%`,
+            ])}
+          />
+        </section>
+      ) : null}
+
+      {tab === "pajak" ? (
+        <section className={`${CARD} mt-4`}>
+          {desk.tax.length === 0 ? (
+            <Empty text="Belum ada pajak atau biaya pada periode ini." />
+          ) : (
+            <Table
+              columns={["Tanggal", "Pajak", "Biaya Layanan", "Total"]}
+              rows={desk.tax.map((row) => [longDate(row.date), money(row.tax), money(row.service), money(row.tax + row.service)])}
+            />
+          )}
+        </section>
+      ) : null}
+
+      {tab === "shift" ? (
+        <section className={`${CARD} mt-4`}>
+          {desk.shifts.length === 0 ? (
+            <Empty text="Belum ada shift pada periode ini." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[48rem] text-left text-sm">
+                <thead className="text-xs uppercase tracking-wide text-muted">
+                  <tr>
+                    {["Kasir", "Dibuka", "Ditutup", "Modal Awal", "Cash Sales", "Aktual", "Selisih"].map((column) => (
+                      <th key={column} className="pb-2 pr-3 font-medium">
+                        {column}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {desk.shifts.map((row) => (
+                    <tr key={`${row.cashier}-${row.openingAt}`} className="border-t border-line">
+                      <td className="py-2.5 pr-3 font-medium">{row.cashier}</td>
+                      <td className="py-2.5 pr-3">{clock(row.openingAt)}</td>
+                      <td className="py-2.5 pr-3">{row.closingAt ? clock(row.closingAt) : "-"}</td>
+                      <td className="py-2.5 pr-3">{money(row.openingCash)}</td>
+                      <td className="py-2.5 pr-3">{money(row.cashSales)}</td>
+                      <td className="py-2.5 pr-3">{row.closingCash == null ? "-" : money(row.closingCash)}</td>
+                      <td className={`py-2.5 pr-3 ${row.difference != null && row.difference < 0 ? "text-danger" : ""}`}>
+                        {row.difference == null ? "-" : money(row.difference)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {tab === "stok" ? (
+        <section className={`${CARD} mt-4`}>
+          {desk.stock.length === 0 ? (
+            <Empty text="Belum ada stok." />
+          ) : (
+            <Table
+              columns={["Jenis", "Nama", "SKU", "Stok", "Minimum", "Nilai"]}
+              rows={desk.stock.map((row) => [
+                row.kind,
+                row.name,
+                row.sku,
+                formatIdDecimal(row.stock),
+                formatIdDecimal(row.minimum),
+                money(row.value),
+              ])}
+            />
+          )}
+        </section>
+      ) : null}
+
+      <p className="mt-4 inline-flex items-center gap-2 text-sm text-muted">
+        <Info size={16} aria-hidden />
+        Data pada laporan ini diperbarui sesuai transaksi yang masuk.
+      </p>
+    </div>
+  );
+}
+
+function Table({ columns, rows }: { columns: string[]; rows: string[][] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead className="text-xs uppercase tracking-wide text-muted">
+          <tr>
+            {columns.map((column) => (
+              <th key={column} className="pb-2 pr-3 font-medium">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index} className="border-t border-line">
+              {row.map((cell, cellIndex) => (
+                <td key={cellIndex} className={`py-2.5 pr-3 ${cellIndex === 0 ? "font-medium" : ""}`}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -1,12 +1,9 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
-import { PageHeader, Card } from "@/components/ui";
+import { notFound } from "next/navigation";
+import { ProductForm } from "../ProductForm";
 import { getDb } from "@/lib/db";
 import { addons } from "@/lib/schema";
 import { getProductDetail, listCategories } from "@/server/queries";
-import { ProductForm } from "../ProductForm";
-import { RecipeExtras } from "../RecipeExtras";
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -15,39 +12,39 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const cats = await listCategories(false, product.catalogPack);
   const allAddons = await getDb().select().from(addons).where(eq(addons.status, "active"));
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div>
-        <PageHeader
-          title={product.name}
-          actions={
-            product.kind === "recipe" ? (
-              <Link href={`/recipes/${product.id}`} className="text-sm underline">
-                Kelola resep
-              </Link>
-            ) : null
-          }
-        />
-        <Card className="p-5">
-          <ProductForm categories={cats} pack={product.catalogPack} product={product} />
-        </Card>
-      </div>
-      <Card>
-        <RecipeExtras
-          productId={product.id}
-          kind={product.kind}
-          initialVariants={product.variants.map((v) => ({
-            name: v.name,
-            isRequired: v.isRequired,
-            options: v.options.map((o) => ({
-              name: o.name,
-              priceAdjustment: Number(o.priceAdjustment),
-              isDefault: o.isDefault,
-            })),
-          }))}
-          allAddons={allAddons}
-          linkedAddonIds={product.addons.map((a) => a.id)}
-        />
-      </Card>
-    </div>
+    <ProductForm
+      categories={cats.map((item) => ({ id: item.id, name: item.name }))}
+      pack={product.catalogPack}
+      product={{
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        categoryId: product.categoryId,
+        kind: product.kind,
+        price: String(product.price),
+        cost: String(product.cost),
+        description: product.description,
+        status: product.status,
+        stockStatus: product.stockStatus,
+        currentStock: String(product.currentStock),
+        minimumStock: String(product.minimumStock),
+        catalogPack: product.catalogPack,
+        image: product.image,
+        isFeatured: product.isFeatured,
+        sortOrder: product.sortOrder,
+      }}
+      initialVariants={product.variants.map((variant) => ({
+        name: variant.name,
+        isRequired: variant.isRequired,
+        options: variant.options.map((option) => ({
+          name: option.name,
+          priceAdjustment: Number(option.priceAdjustment),
+          isDefault: option.isDefault,
+        })),
+      }))}
+      allAddons={allAddons.map((addon) => ({ id: addon.id, name: addon.name, price: String(addon.price) }))}
+      linkedAddonIds={product.addons.map((addon) => addon.id)}
+      recipeLines={product.recipeLines}
+    />
   );
 }

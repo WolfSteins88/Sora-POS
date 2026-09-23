@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { saveProductAddons, saveVariants } from "@/app/actions/ops";
 import { PrimaryButton, inputClass } from "@/components/ui";
-import { formatIdNumber, parseIdNumber } from "@/lib/format";
+import { formatIdNumber, money, num, parseIdNumber } from "@/lib/format";
 
 type Variant = {
   name: string;
@@ -17,12 +17,14 @@ export function RecipeExtras({
   initialVariants,
   allAddons,
   linkedAddonIds,
+  section = "all",
 }: {
   productId: string;
   kind: "goods" | "recipe";
   initialVariants: Variant[];
-  allAddons: { id: string; name: string }[];
+  allAddons: { id: string; name: string; price?: string }[];
   linkedAddonIds: string[];
+  section?: "all" | "variants" | "addons";
 }) {
   const [variants, setVariants] = useState<Variant[]>(
     initialVariants.length
@@ -33,10 +35,13 @@ export function RecipeExtras({
   if (kind !== "recipe") {
     return <p className="text-sm text-muted">Variant dan add-on hanya untuk racikan.</p>;
   }
+  const showVariants = section === "all" || section === "variants";
+  const showAddons = section === "all" || section === "addons";
   return (
     <div className="space-y-6">
+      {showVariants ? (
       <div>
-        <h3 className="font-semibold">Variant</h3>
+        <h3 className="font-semibold">Varian</h3>
         {variants.map((v, i) => (
           <div key={i} className="mt-3 rounded-xl border border-line p-3">
             <input
@@ -119,11 +124,13 @@ export function RecipeExtras({
             await saveVariants(productId, JSON.stringify(variants));
           }}
         >
-          <PrimaryButton type="submit">Simpan variant</PrimaryButton>
+          <PrimaryButton type="submit">Simpan varian</PrimaryButton>
         </form>
       </div>
+      ) : null}
+      {showAddons ? (
       <div>
-        <h3 className="font-semibold">Add-on produk</h3>
+        <h3 className="font-semibold">Topping</h3>
         {allAddons.map((a) => (
           <label key={a.id} className="mt-1 flex items-center gap-2 text-sm">
             <input
@@ -134,6 +141,7 @@ export function RecipeExtras({
               }
             />
             {a.name}
+            {a.price != null ? <span className="text-muted">{money(num(a.price))}</span> : null}
           </label>
         ))}
         <form
@@ -142,9 +150,10 @@ export function RecipeExtras({
             await saveProductAddons(productId, addonIds);
           }}
         >
-          <PrimaryButton type="submit">Simpan add-on</PrimaryButton>
+          <PrimaryButton type="submit">Simpan topping</PrimaryButton>
         </form>
       </div>
+      ) : null}
     </div>
   );
 }

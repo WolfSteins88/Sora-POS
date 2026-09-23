@@ -1,7 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
-import { getSql } from "@/lib/db";
+import { reportDesk } from "@/server/queries";
+
+const PAYMENT_LABEL: Record<string, string> = {
+  cash: "Tunai",
+  qris: "QRIS",
+  debit: "Debit",
+  credit: "Kredit",
+  ewallet: "E-wallet",
+};
+
+const TYPE_TAB: Record<string, string> = {
+  ringkasan: "ringkasan",
+  penjualan: "penjualan",
+  sales: "penjualan",
+  produk: "produk",
+  products: "produk",
+  kasir: "kasir",
+  cashiers: "kasir",
+  pembayaran: "pembayaran",
+  payments: "pembayaran",
+  pajak: "pajak",
+  shift: "shift",
+  shifts: "shift",
+  stok: "stok",
+  inventory: "stok",
+  categories: "categories",
+};
+
+function csvCell(value: unknown) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function csv(header: string[], rows: unknown[][]) {
+  return [header.map(csvCell).join(","), ...rows.map((row) => row.map(csvCell).join(","))].join("\n");
+}
+
+function amount(value: number) {
+  return Math.round(value);
+}
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -9,49 +47,64 @@ export async function GET(req: NextRequest) {
     return new NextResponse("Forbidden", { status: 403 });
   }
   const { searchParams } = req.nextUrl;
-  const type = searchParams.get("type") || "sales";
-  const from = searchParams.get("from") || new Date().toISOString().slice(0, 10);
-  const to = searchParams.get("to") || from;
-  const sql = getSql();
+  const requested = searchParams.get("tab") || searchParams.get("type") || "ringkasan";
+  const tab = TYPE_TAB[requested] ?? "ringkasan";
+  const desk = await reportDesk({
+    from: searchParams.get("from") || undefined,
+    to: searchParams.get("to") || undefined,
+    cashierId: searchParams.get("cashier") || undefined,
+    method: searchParams.get("method") || undefined,
+  });
+  const paymentTotal = desk.payments.reduce((sum, row) => sum + row.total, 0);
+
   let header: string[] = [];
   let rows: unknown[][] = [];
-
-  if (type === "sales") {
-    header = ["Tanggal", "Jumlah Transaksi", "Total"];
-    const data = await sql`SELECT created_at::date, COUNT(*), COALESCE(SUM(total),0) FROM transactions WHERE status='completed' AND created_at::date BETWEEN ${from}::date AND ${to}::date GROUP BY 1 ORDER BY 1`;
-    rows = data.map((r) => Object.values(r));
-  } else if (type === "products") {
-    header = ["Produk", "Qty", "Revenue"];
-    const data = await sql`SELECT ti.product_name, SUM(ti.quantity), COALESCE(SUM(ti.subtotal),0) FROM transaction_items ti JOIN transactions t ON t.id=ti.transaction_id WHERE t.status='completed' AND t.created_at::date BETWEEN ${from}::date AND ${to}::date GROUP BY ti.product_id, ti.product_name`;
-    rows = data.map((r) => Object.values(r));
-  } else if (type === "categories") {
-    header = ["Kategori", "Qty", "Revenue"];
-    const data = await sql`SELECT c.name, SUM(ti.quantity), COALESCE(SUM(ti.subtotal),0) FROM transaction_items ti JOIN transactions t ON t.id=ti.transaction_id JOIN products p ON p.id=ti.product_id JOIN categories c ON c.id=p.category_id WHERE t.status='completed' AND t.created_at::date BETWEEN ${from}::date AND ${to}::date GROUP BY c.id, c.name`;
-    rows = data.map((r) => Object.values(r));
-  } else if (type === "payments") {
-    header = ["Metode", "Jumlah", "Total"];
-    const data = await sql`SELECT p.method, COUNT(*), COALESCE(SUM(p.amount - p.change_amount),0) FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.status='completed' AND t.created_at::date BETWEEN ${from}::date AND ${to}::date GROUP BY p.method`;
-    rows = data.map((r) => Object.values(r));
-  } else if (type === "cashiers") {
-    header = ["Kasir", "Jumlah", "Total"];
-    const data = await sql`SELECT u.name, COUNT(*), COALESCE(SUM(t.total),0) FROM transactions t JOIN users u ON u.id=t.user_id WHERE t.status='completed' AND t.created_at::date BETWEEN ${from}::date AND ${to}::date GROUP BY u.id, u.name`;
-    rows = data.map((r) => Object.values(r));
-  } else if (type === "shifts") {
-    header = ["Kasir", "Dibuka", "Ditutup", "Modal", "Cash Sales", "Actual", "Selisih"];
-    const data = await sql`SELECT u.name, s.opening_at, s.closing_at, s.opening_cash, s.cash_sales, s.closing_cash, s.difference FROM shifts s JOIN users u ON u.id=s.user_id WHERE s.opening_at::date BETWEEN ${from}::date AND ${to}::date ORDER BY s.opening_at DESC`;
-    rows = data.map((r) => Object.values(r));
-  } else {
+  if (tab === "penjualan") {
+    header = ["Tanggal", "Jumlah Transaksi", "Total Penjualan"];
+    rows = desk.sales.map((row) => [row.date, row.trx, amount(row.total)]);
+  } else if (tab === "produk") {
+    header = ["Produk", "Kategori", "Terjual", "Total Penjualan"];
+    rows = desk.products.map((row) => [row.name, row.category, row.qty, amount(row.revenue)]);
+  } else if (tab === "categories") {
+    header = ["Kategori", "Total Penjualan"];
+    rows = desk.categories.map((row) => [row.name, amount(row.revenue)]);
+  } else if (tab === "kasir") {
+    header = ["Kasir", "Jumlah Transaksi", "Total Penjualan"];
+    rows = desk.cashierRows.map((row) => [row.name, row.trx, amount(row.total)]);
+  } else if (tab === "pembayaran") {
+    header = ["Metode", "Jumlah Transaksi", "Total", "Persentase"];
+    rows = desk.payments.map((row) => [
+      PAYMENT_LABEL[row.method] ?? row.method,
+      row.trx,
+      amount(row.total),
+      paymentTotal > 0 ? Math.round((row.total / paymentTotal) * 100) : 0,
+    ]);
+  } else if (tab === "pajak") {
+    header = ["Tanggal", "Pajak", "Biaya Layanan", "Total"];
+    rows = desk.tax.map((row) => [row.date, amount(row.tax), amount(row.service), amount(row.tax + row.service)]);
+  } else if (tab === "shift") {
+    header = ["Kasir", "Dibuka", "Ditutup", "Modal Awal", "Cash Sales", "Aktual", "Selisih"];
+    rows = desk.shifts.map((row) => [
+      row.cashier,
+      row.openingAt,
+      row.closingAt ?? "",
+      amount(row.openingCash),
+      amount(row.cashSales),
+      row.closingCash == null ? "" : amount(row.closingCash),
+      row.difference == null ? "" : amount(row.difference),
+    ]);
+  } else if (tab === "stok") {
     header = ["Jenis", "Nama", "SKU", "Stok", "Minimum", "Nilai"];
-    const goods = await sql`SELECT 'Barang', name, sku, current_stock, minimum_stock, current_stock * cost FROM products WHERE kind='goods'`;
-    const bahan = await sql`SELECT 'Bahan', name, sku, current_stock, minimum_stock, current_stock * cost FROM inventory_items`;
-    rows = [...goods, ...bahan].map((r) => Object.values(r));
+    rows = desk.stock.map((row) => [row.kind, row.name, row.sku, row.stock, row.minimum, amount(row.value)]);
+  } else {
+    header = ["Jam", "Penjualan", "Jumlah Transaksi"];
+    rows = desk.hours.map((row) => [`${String(row.hour).padStart(2, "0")}:00`, amount(row.sales), row.trx]);
   }
 
-  const csv = [header.join(","), ...rows.map((r) => r.map((c) => `"${String(c ?? "").replaceAll('"', '""')}"`).join(","))].join("\n");
-  return new NextResponse(csv, {
+  return new NextResponse(csv(header, rows), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="report-${type}-${from}_${to}.csv"`,
+      "Content-Disposition": `attachment; filename="laporan-${tab}-${desk.from}_${desk.to}.csv"`,
     },
   });
 }

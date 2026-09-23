@@ -1,7 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Cake,
+  Coffee,
+  CupSoda,
+  GlassWater,
+  LayoutGrid,
+  List,
+  Minus,
+  Pause,
+  Plus,
+  Search,
+  ShoppingBag,
+  StickyNote,
+  Tag,
+  Trash2,
+  UtensilsCrossed,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { checkoutAction, deleteHeldAction, holdOrderAction } from "@/app/actions/ops";
 import { money, num } from "@/lib/format";
 import { EmptyState, PrimaryButton, inputClass } from "@/components/ui";
@@ -48,8 +66,46 @@ type CartLine = {
 
 type Held = { id: string; label: string; cartJson: unknown };
 
+const WALK_AWAY_CUSTOMER = "in walk away customer";
+
 function lineTotal(line: CartLine) {
   return line.unit * line.quantity;
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function ChangeFigure({
+  label,
+  value,
+  currency,
+  tone,
+}: {
+  label: string;
+  value: number;
+  currency: string;
+  tone: "ok" | "warn" | "neutral";
+}) {
+  const toneClass =
+    tone === "ok" ? "bg-ok-soft text-ok" : tone === "warn" ? "bg-warn-soft text-warn" : "border border-line bg-chip text-ink";
+  return (
+    <div className={`rounded-2xl px-4 py-3 ${toneClass}`} aria-live="polite">
+      <p className="text-sm font-medium">{label}</p>
+      <p className="text-3xl font-semibold tracking-tight">{money(value, currency)}</p>
+    </div>
+  );
+}
+
+function categoryIcon(name: string): LucideIcon {
+  const label = name.toLowerCase();
+  if (/(kopi|coffee|latte|espresso)/.test(label)) return Coffee;
+  if (/(non-?coffee|teh|tea)/.test(label)) return CupSoda;
+  if (/(makanan|food|sandwich)/.test(label)) return UtensilsCrossed;
+  if (/(pastry|dessert|kue|roti)/.test(label)) return Cake;
+  if (/(botol|minum|drink)/.test(label)) return GlassWater;
+  if (/(merch|oleh)/.test(label)) return ShoppingBag;
+  return Tag;
 }
 
 export function PosClient({
@@ -75,6 +131,9 @@ export function PosClient({
 }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
+  const [stockOnly, setStockOnly] = useState(true);
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [orderNote, setOrderNote] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [modal, setModal] = useState<CatalogProduct | null>(null);
   const [optionIds, setOptionIds] = useState<Record<string, string>>({});
@@ -83,16 +142,24 @@ export function PosClient({
   const [orderType, setOrderType] = useState<"take_away" | "dine_in">(shopMode === "fnb" ? "dine_in" : "take_away");
   const [tableNumber, setTableNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [customerKind, setCustomerKind] = useState<"walk" | "custom">("walk");
   const [discount, setDiscount] = useState(0);
   const [method, setMethod] = useState("cash");
   const [amount, setAmount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ id: string; transactionNumber: string; total: number; changeAmount: number } | null>(null);
+  const receiptTimer = useRef<number | null>(null);
 
   const showOrderType = shopMode !== "retail";
   const showTable = showOrderType && orderType === "dine_in";
+  const showTakeaway = showOrderType && orderType === "take_away";
   const tableRequired = shopMode === "fnb" && orderType === "dine_in";
+  const checkoutCustomerName = showTakeaway
+    ? customerKind === "walk"
+      ? WALK_AWAY_CUSTOMER
+      : customerName.trim()
+    : customerName;
 
   const catalogKey = products.map((p) => p.id).join(",");
   useEffect(() => {
@@ -102,7 +169,27 @@ export function PosClient({
     setOrderType(shopMode === "fnb" ? "dine_in" : "take_away");
   }, [shopMode, catalogKey]);
 
+  useEffect(() => {
+    if (!receipt) return;
+    receiptTimer.current = window.setTimeout(() => setReceipt(null), 3000);
+    return () => {
+      if (receiptTimer.current != null) {
+        window.clearTimeout(receiptTimer.current);
+        receiptTimer.current = null;
+      }
+    };
+  }, [receipt]);
+
+  function dismissReceipt() {
+    if (receiptTimer.current != null) {
+      window.clearTimeout(receiptTimer.current);
+      receiptTimer.current = null;
+    }
+    setReceipt(null);
+  }
+
   const filtered = products.filter((p) => {
+    if (stockOnly && p.stockStatus === "sold_out") return false;
     if (cat !== "all" && p.categoryId !== cat) return false;
     if (q && !`${p.name} ${p.sku}`.toLowerCase().includes(q.toLowerCase())) return false;
     return true;
@@ -211,14 +298,16 @@ export function PosClient({
         })),
         orderType: showOrderType ? orderType : "take_away",
         tableNumber: showTable ? tableNumber : undefined,
-        customerName,
+        customerName: checkoutCustomerName,
         discount: disc,
+        note: orderNote.trim() || undefined,
         payment: { method, amount: method === "cash" ? amount || total : total },
       });
       setReceipt(result);
       setCart([]);
       setAmount(0);
       setDiscount(0);
+      setOrderNote("");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Checkout gagal");
     } finally {
@@ -227,167 +316,237 @@ export function PosClient({
   }
 
   async function hold() {
-    const label = customerName || `Hold ${new Date().toLocaleTimeString("id-ID")}`;
+    const label = checkoutCustomerName || `Hold ${new Date().toLocaleTimeString("id-ID")}`;
     await holdOrderAction(label, cart);
     setCart([]);
+  }
+
+  function newOrder() {
+    setCart([]);
+    setDiscount(0);
+    setOrderNote("");
+    setTableNumber("");
+    setCustomerName("");
+    setCustomerKind("walk");
+    setAmount(0);
+    setMessage(null);
+    setReceipt(null);
   }
 
   const heldCarts = useMemo(() => held, [held]);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-      <div>
-        {!shiftOpen ? (
-          <p className="mb-3 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
-            Shift belum dibuka. Buka shift dulu sebelum bayar.
-          </p>
-        ) : null}
-        {message ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">{message}</p> : null}
-        {receipt ? (
-          <p className="mb-3 rounded-lg bg-ok-soft px-3 py-2 text-sm text-ok">
-            Transaksi {receipt.transactionNumber} berhasil. Kembalian {money(receipt.changeAmount, currency)}.{" "}
+    <div>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Kasir</h1>
+          <p className="mt-1 text-sm text-muted">Pilih produk untuk menambah ke keranjang.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative w-full max-w-xs">
+            <span className="sr-only">Cari produk</span>
+            <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Cari produk..."
+              className={`${inputClass} pl-9`}
+            />
+          </label>
+          <button
+            type="button"
+            aria-pressed={stockOnly}
+            onClick={() => setStockOnly((value) => !value)}
+            className={`btn inline-flex items-center gap-2 rounded-full border px-3 text-sm ${stockOnly ? "border-ok/30 bg-ok-soft text-ok" : "border-line bg-surface"}`}
+          >
+            <span className={`size-2 rounded-full ${stockOnly ? "bg-ok" : "bg-muted"}`} aria-hidden />
+            Stok tersedia
+          </button>
+          <div className="inline-flex rounded-full border border-line bg-surface p-1">
+            <button
+              type="button"
+              aria-label="Tampilan grid"
+              aria-pressed={view === "grid"}
+              onClick={() => setView("grid")}
+              className={`inline-flex size-9 items-center justify-center rounded-full ${view === "grid" ? "bg-accent text-white" : "text-ink"}`}
+            >
+              <LayoutGrid size={16} aria-hidden />
+            </button>
+            <button
+              type="button"
+              aria-label="Tampilan daftar"
+              aria-pressed={view === "list"}
+              onClick={() => setView("list")}
+              className={`inline-flex size-9 items-center justify-center rounded-full ${view === "list" ? "bg-accent text-white" : "text-ink"}`}
+            >
+              <List size={16} aria-hidden />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {!shiftOpen ? (
+        <p className="mb-3 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+          Shift belum dibuka. Buka shift dulu sebelum bayar.
+        </p>
+      ) : null}
+      {message ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">{message}</p> : null}
+      {receipt ? (
+        <div
+          role="status"
+          className="fixed top-4 right-4 z-[140] w-[min(100%-2rem,22rem)] rounded-2xl bg-ok-soft px-4 py-3 text-ok shadow-card"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">Kembalian</p>
+              <p className="text-3xl font-semibold tracking-tight">{money(receipt.changeAmount, currency)}</p>
+            </div>
+            <button
+              type="button"
+              aria-label="Tutup pemberitahuan"
+              onClick={dismissReceipt}
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full"
+            >
+              <X size={16} aria-hidden />
+            </button>
+          </div>
+          <p className="mt-2 text-sm">
+            Transaksi {receipt.transactionNumber} berhasil.{" "}
             <a className="underline" href={`/transactions/${receipt.id}`}>
               Lihat struk
             </a>
           </p>
-        ) : null}
-        <div className="mb-3 flex flex-wrap gap-2">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Cari produk"
-            className={`${inputClass} max-w-xs`}
-            aria-label="Cari produk"
-          />
         </div>
-        <div className="mb-3 flex flex-wrap gap-2">
+      ) : null}
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div>
+        <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
           <button
             type="button"
             onClick={() => setCat("all")}
-            className={`btn rounded-full px-3 text-sm transition-all duration-200 hover:shadow-md active:scale-95 ${cat === "all" ? "bg-accent text-white" : "border border-line bg-surface"}`}
+            className={`btn inline-flex shrink-0 items-center gap-2 rounded-full px-3 text-sm ${cat === "all" ? "bg-accent text-white" : "border border-line bg-surface"}`}
           >
             Semua
           </button>
-          {categories.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setCat(c.id)}
-              className={`btn rounded-full px-3 text-sm transition-all duration-200 hover:shadow-md active:scale-95 ${cat === c.id ? "bg-accent text-white" : "border border-line bg-surface"}`}
-            >
-              {c.name}
-            </button>
-          ))}
+          {categories.map((c) => {
+            const Icon = categoryIcon(c.name);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCat(c.id)}
+                className={`btn inline-flex shrink-0 items-center gap-2 rounded-full px-3 text-sm ${cat === c.id ? "bg-accent text-white" : "border border-line bg-surface"}`}
+              >
+                <Icon size={16} aria-hidden />
+                {c.name}
+              </button>
+            );
+          })}
         </div>
         {filtered.length === 0 ? (
           <EmptyState title="Tidak ada produk" description="Ubah pencarian atau ganti mode toko di Pengaturan." />
         ) : (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-4">
+          <div className={view === "grid" ? "grid grid-cols-2 gap-3 md:grid-cols-3" : "flex flex-col gap-2"}>
             {filtered.map((p) => {
               const sold = p.stockStatus === "sold_out";
               return (
-                <article
+                <button
                   key={p.id}
-                  className={`flex h-full flex-col rounded-2xl border border-line bg-surface p-4 shadow-card md:p-5 ${sold ? "opacity-40" : ""}`}
+                  type="button"
+                  disabled={sold}
+                  aria-label={`Tambah ${p.name}`}
+                  onClick={() => (p.kind === "goods" ? addGoods(p) : openRecipe(p))}
+                  className={`overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-card disabled:opacity-40 ${
+                    view === "list" ? "flex items-center gap-3 p-2" : "flex h-full flex-col"
+                  }`}
                 >
-                  <div className="relative aspect-square overflow-hidden rounded-xl bg-accent-soft">
+                  <div className={`relative overflow-hidden bg-accent-soft ${view === "list" ? "size-16 shrink-0 rounded-xl" : "aspect-[4/3]"}`}>
                     <ProductImage
                       kind="products"
                       filename={p.image}
                       name={p.name}
                       className="absolute inset-0 h-full w-full object-cover"
                     />
+                    {p.isFeatured ? (
+                      <span className="absolute top-2 right-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-white">
+                        Unggulan
+                      </span>
+                    ) : null}
                   </div>
-                  <p className="mt-3 line-clamp-2 min-h-11 text-sm font-semibold">{p.name}</p>
-                  <div className="mt-auto flex flex-col justify-end gap-2 pt-3">
-                    <span className="text-sm font-semibold text-accent">{money(p.price, currency)}</span>
-                    <button
-                      type="button"
-                      disabled={sold}
-                      onClick={() => (p.kind === "goods" ? addGoods(p) : openRecipe(p))}
-                      className="inline-flex h-9 w-full items-center justify-center gap-1 rounded-xl bg-accent px-3 text-xs font-semibold text-white transition-all duration-200 hover:shadow-md active:scale-95 disabled:opacity-50"
-                    >
-                      <Plus size={14} aria-hidden />
-                      Tambah
-                    </button>
+                  <div className={view === "list" ? "min-w-0" : "p-3"}>
+                    <p className="truncate text-sm font-medium">{p.name}</p>
+                    <p className="text-sm text-muted">{money(p.price, currency)}</p>
                   </div>
-                </article>
+                </button>
               );
             })}
           </div>
         )}
       </div>
 
-      <aside className="rounded-card border border-line bg-surface p-4 shadow-card">
-        <h2 className="font-semibold">Keranjang</h2>
-        <ul className="mt-3 max-h-64 space-y-2 overflow-auto text-sm">
-          {cart.length === 0 ? <li className="text-muted">Kosong</li> : null}
-          {cart.map((l) => (
-            <li key={l.key} className="rounded-lg border border-line p-2">
-              <div className="flex justify-between gap-2">
-                <span className="font-medium">{l.name}</span>
-                <button type="button" className="text-danger" onClick={() => setCart((c) => c.filter((x) => x.key !== l.key))}>
-                  Hapus
-                </button>
-              </div>
-              {l.optionLabel ? <p className="text-xs text-muted">{l.optionLabel}</p> : null}
-              <div className="mt-1 flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn h-9 w-9 rounded border border-line"
-                  aria-label="Kurangi"
-                  onClick={() =>
-                    setCart((c) =>
-                      c.map((x) => (x.key === l.key ? { ...x, quantity: Math.max(1, x.quantity - 1) } : x)),
-                    )
-                  }
-                >
-                  -
-                </button>
-                <span>{l.quantity}</span>
-                <button
-                  type="button"
-                  className="btn h-9 w-9 rounded border border-line"
-                  aria-label="Tambah"
-                  onClick={() => setCart((c) => c.map((x) => (x.key === l.key ? { ...x, quantity: x.quantity + 1 } : x)))}
-                >
-                  +
-                </button>
-                <span className="ml-auto">{money(lineTotal(l), currency)}</span>
-              </div>
-            </li>
-          ))}
-        </ul>
+      <aside className="rounded-2xl border border-line bg-surface p-4 shadow-card xl:sticky xl:top-4">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-semibold">Pesanan</h2>
+          <button type="button" onClick={newOrder} className="text-sm text-accent">
+            Pesanan baru
+          </button>
+        </div>
 
         {showOrderType ? (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <select
-              className={inputClass}
-              value={orderType}
-              onChange={(e) => setOrderType(e.target.value as "take_away" | "dine_in")}
-              aria-label="Tipe pesanan"
+          <div className="mt-3 grid grid-cols-2 rounded-full bg-chip p-1" role="group" aria-label="Tipe pesanan">
+            <button
+              type="button"
+              aria-pressed={orderType === "dine_in"}
+              onClick={() => setOrderType("dine_in")}
+              className={`min-h-11 rounded-full text-sm font-medium ${orderType === "dine_in" ? "bg-accent text-white" : "text-ink"}`}
             >
-              <option value="take_away">Bawa pulang</option>
-              <option value="dine_in">Makan di tempat</option>
-            </select>
-            {showTable ? (
-              <input
+              Makan di tempat
+            </button>
+            <button
+              type="button"
+              aria-pressed={orderType === "take_away"}
+              onClick={() => {
+                setOrderType("take_away");
+                setCustomerKind("walk");
+              }}
+              className={`min-h-11 rounded-full text-sm font-medium ${orderType === "take_away" ? "bg-accent text-white" : "text-ink"}`}
+            >
+              Bawa pulang
+            </button>
+          </div>
+        ) : null}
+
+        {showTable ? (
+          <input
+            className={`${inputClass} mt-3`}
+            placeholder={tableRequired ? "Nomor meja wajib" : "Nomor meja"}
+            value={tableNumber}
+            onChange={(e) => setTableNumber(e.target.value)}
+            aria-label="Nomor meja"
+          />
+        ) : showTakeaway ? (
+          <div className="mt-3 space-y-2">
+            <label className="block text-sm">
+              <span className="sr-only">Nama pelanggan</span>
+              <select
                 className={inputClass}
-                placeholder={tableRequired ? "Nomor meja wajib" : "Nomor meja"}
-                required={tableRequired}
-                value={tableNumber}
-                onChange={(e) => setTableNumber(e.target.value)}
-                aria-label="Nomor meja"
-              />
-            ) : (
+                value={customerKind}
+                onChange={(event) => setCustomerKind(event.target.value as "walk" | "custom")}
+              >
+                <option value="walk">{WALK_AWAY_CUSTOMER}</option>
+                <option value="custom">Kustom</option>
+              </select>
+            </label>
+            {customerKind === "custom" ? (
               <input
                 className={inputClass}
                 placeholder="Nama pelanggan"
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
+                onChange={(event) => setCustomerName(event.target.value)}
                 aria-label="Nama pelanggan"
               />
-            )}
+            ) : null}
           </div>
         ) : (
           <input
@@ -399,24 +558,98 @@ export function PosClient({
           />
         )}
 
+        <ul className="mt-3 max-h-72 space-y-0 overflow-auto">
+          {cart.length === 0 ? <li className="py-6 text-center text-sm text-muted">Keranjang kosong</li> : null}
+          {cart.map((line) => (
+            <li key={line.key} className="flex gap-3 border-t border-line py-3">
+              <ProductImage
+                kind="products"
+                filename={products.find((item) => item.id === line.productId)?.image}
+                name={line.name}
+                className="size-12 shrink-0 rounded-xl object-cover"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{line.name}</p>
+                    {line.optionLabel ? <p className="truncate text-xs text-muted">{line.optionLabel}</p> : null}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Hapus ${line.name}`}
+                    className="text-muted hover:text-danger"
+                    onClick={() => setCart((current) => current.filter((item) => item.key !== line.key))}
+                  >
+                    <Trash2 size={16} aria-hidden />
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="inline-flex items-center rounded-full border border-line">
+                    <button
+                      type="button"
+                      className="inline-flex size-9 items-center justify-center"
+                      aria-label="Kurangi"
+                      onClick={() =>
+                        setCart((current) =>
+                          current.map((item) =>
+                            item.key === line.key ? { ...item, quantity: Math.max(1, item.quantity - 1) } : item,
+                          ),
+                        )
+                      }
+                    >
+                      <Minus size={14} aria-hidden />
+                    </button>
+                    <span className="w-6 text-center text-sm">{line.quantity}</span>
+                    <button
+                      type="button"
+                      className="inline-flex size-9 items-center justify-center"
+                      aria-label="Tambah"
+                      onClick={() =>
+                        setCart((current) =>
+                          current.map((item) => (item.key === line.key ? { ...item, quantity: item.quantity + 1 } : item)),
+                        )
+                      }
+                    >
+                      <Plus size={14} aria-hidden />
+                    </button>
+                  </div>
+                  <span className="text-sm font-medium">{money(lineTotal(line), currency)}</span>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+
         <label className="mt-3 block text-sm">
           <span className="mb-1 block font-medium">Diskon</span>
           <MoneyInput value={discount} onValueChange={setDiscount} />
         </label>
-        <div className="mt-3 space-y-1 text-sm">
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 flex items-center gap-2 font-medium">
+            <StickyNote size={16} aria-hidden />
+            Catatan
+          </span>
+          <input
+            className={inputClass}
+            placeholder="Tambah catatan..."
+            value={orderNote}
+            onChange={(event) => setOrderNote(event.target.value)}
+          />
+        </label>
+        <div className="mt-4 space-y-1 border-t border-line pt-3 text-sm">
           <div className="flex justify-between">
-            <span>Subtotal</span>
+            <span className="text-muted">Subtotal</span>
             <span>{money(subtotal, currency)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Pajak</span>
+            <span className="text-muted">Pajak{taxPercent ? ` (${taxPercent}%)` : ""}</span>
             <span>{money(tax, currency)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Service</span>
+            <span className="text-muted">Service{servicePercent ? ` (${servicePercent}%)` : ""}</span>
             <span>{money(service, currency)}</span>
           </div>
-          <div className="flex justify-between font-semibold">
+          <div className="flex justify-between pt-1 text-base font-semibold">
             <span>Total</span>
             <span>{money(total, currency)}</span>
           </div>
@@ -429,31 +662,44 @@ export function PosClient({
           <option value="ewallet">E-wallet</option>
         </select>
         {method === "cash" ? (
-          <div className="mt-2">
+          <div className="mt-2 space-y-2">
             <MoneyInput placeholder="Uang diterima" value={amount} onValueChange={setAmount} />
+            {amount <= 0 ? (
+              <ChangeFigure label="Kembalian" value={0} currency={currency} tone="neutral" />
+            ) : roundMoney(amount - total) < 0 ? (
+              <ChangeFigure label="Kurang" value={Math.abs(roundMoney(amount - total))} currency={currency} tone="warn" />
+            ) : (
+              <ChangeFigure label="Kembalian" value={roundMoney(amount - total)} currency={currency} tone="ok" />
+            )}
           </div>
         ) : null}
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <button type="button" className="btn rounded-lg border border-line text-sm" onClick={hold} disabled={!cart.length}>
-            Tahan
+        <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+          <button
+            type="button"
+            className="btn inline-flex items-center gap-2 rounded-xl border border-line px-3 text-sm disabled:opacity-50"
+            onClick={hold}
+            disabled={!cart.length}
+          >
+            <Pause size={16} aria-hidden />
+            Tahan pesanan
           </button>
           <button
             type="button"
             onClick={pay}
             disabled={!cart.length || !shiftOpen || busy}
-            className="btn inline-flex items-center justify-center rounded-lg bg-cta px-4 text-sm font-semibold text-white disabled:opacity-50"
+            className="btn inline-flex items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white disabled:opacity-50"
           >
-            Bayar
+            Proses pembayaran
           </button>
         </div>
         {heldCarts.length ? (
-          <div className="mt-4">
+          <div className="mt-4 border-t border-line pt-3">
             <p className="text-sm font-medium">Order tertahan</p>
             {heldCarts.map((h) => (
-              <div key={h.id} className="mt-2 flex items-center justify-between text-sm">
+              <div key={h.id} className="mt-2 flex items-center justify-between gap-2 text-sm">
                 <button
                   type="button"
-                  className="underline"
+                  className="min-w-0 truncate text-left underline"
                   onClick={() => {
                     setCart(h.cartJson as CartLine[]);
                     void deleteHeldAction(h.id);
@@ -461,7 +707,7 @@ export function PosClient({
                 >
                   {h.label}
                 </button>
-                <button type="button" onClick={() => void deleteHeldAction(h.id)}>
+                <button type="button" className="shrink-0 text-danger" onClick={() => void deleteHeldAction(h.id)}>
                   Hapus
                 </button>
               </div>
@@ -469,6 +715,7 @@ export function PosClient({
           </div>
         ) : null}
       </aside>
+      </div>
 
       {modal && shopMode !== "retail" ? (
         <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-4 sm:items-center">

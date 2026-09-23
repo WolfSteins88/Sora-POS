@@ -16,6 +16,7 @@ export type CheckoutPayload = {
   tableNumber?: string;
   customerName?: string;
   discount?: number;
+  note?: string;
   payment: { method: string; amount?: number };
 };
 
@@ -289,15 +290,16 @@ export async function checkoutTransaction(userId: string, payload: CheckoutPaylo
     const orderType = payload.orderType === "dine_in" ? "dine_in" : "take_away";
     const tableNumber = orderType === "dine_in" ? (payload.tableNumber ?? "").trim() || null : null;
     const customerName = (payload.customerName ?? "").trim() || null;
+    const orderNote = (payload.note ?? "").trim().slice(0, 500) || null;
     const number = await nextTransactionNumber(tx);
 
     const [trx] = await tx<{ id: string }[]>`
       INSERT INTO transactions (
         transaction_number, shift_id, user_id, order_type, table_number, customer_name,
-        subtotal, discount, tax, service_charge, total, status
+        subtotal, discount, tax, service_charge, total, status, note
       ) VALUES (
         ${number}, ${shift.id}, ${userId}, ${orderType}, ${tableNumber}, ${customerName},
-        ${subtotal}, ${discount}, ${tax}, ${service}, ${total}, 'completed'
+        ${subtotal}, ${discount}, ${tax}, ${service}, ${total}, 'completed', ${orderNote}
       )
       RETURNING id
     `;

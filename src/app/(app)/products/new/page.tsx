@@ -1,9 +1,10 @@
-import Link from "next/link";
-import { PageHeader, Card, EmptyState } from "@/components/ui";
-import { listCategories } from "@/server/queries";
+import { eq } from "drizzle-orm";
+import { ProductForm } from "../ProductForm";
+import { getDb } from "@/lib/db";
+import { addons } from "@/lib/schema";
 import { getSetting } from "@/lib/settings";
 import { catalogPackFromQuery } from "@/lib/theme";
-import { ProductForm } from "../ProductForm";
+import { listCategories } from "@/server/queries";
 
 export default async function NewProductPage({
   searchParams,
@@ -15,29 +16,9 @@ export default async function NewProductPage({
   const pack = catalogPackFromQuery(params.pack, shopMode);
   const categories = await listCategories(false, pack);
   return (
-    <div>
-      <PageHeader
-        title="Produk baru"
-        description={pack === "retail" ? "Katalog retail" : "Katalog F&B"}
-      />
-      {categories.length === 0 ? (
-        <EmptyState
-          title="Belum ada kategori"
-          description="Buat kategori untuk katalog ini sebelum menambah produk."
-          action={
-            <Link
-              href={`/categories?pack=${pack}`}
-              className="btn inline-flex items-center rounded-xl bg-accent px-4 text-sm font-semibold text-white"
-            >
-              Tambah kategori
-            </Link>
-          }
-        />
-      ) : (
-        <Card className="p-5">
-          <ProductForm categories={categories} pack={pack} />
-        </Card>
-      )}
-    </div>
+    <ProductForm
+      categories={categories.map((item) => ({ id: item.id, name: item.name }))}
+      pack={pack}
+    />
   );
 }
