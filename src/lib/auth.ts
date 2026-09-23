@@ -27,6 +27,7 @@ export async function login(username: string, password: string): Promise<Session
   if (!row || !row.isActive) return null;
   const ok = await bcrypt.compare(password, row.passwordHash);
   if (!ok) return null;
+  await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, row.id));
   const session: SessionUser = {
     id: row.id,
     name: row.name,

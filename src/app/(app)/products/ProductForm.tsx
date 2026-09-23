@@ -51,6 +51,7 @@ export function ProductForm({
   allAddons = [],
   linkedAddonIds = [],
   recipeLines = [],
+  defaultKind = "goods",
 }: {
   categories: Category[];
   pack: "fnb" | "retail";
@@ -61,10 +62,11 @@ export function ProductForm({
   allAddons?: Addon[];
   linkedAddonIds?: string[];
   recipeLines?: RecipeLine[];
+  defaultKind?: "goods" | "recipe";
 }) {
   const lockedPack = product?.catalogPack ?? pack;
   const isRetail = lockedPack === "retail";
-  const [kind, setKind] = useState<"goods" | "recipe">(isRetail ? "goods" : (product?.kind ?? "goods"));
+  const [kind, setKind] = useState<"goods" | "recipe">(isRetail ? "goods" : (product?.kind ?? defaultKind));
   const [active, setActive] = useState(product?.status !== "inactive");
   const [name, setName] = useState(product?.name ?? "");
   const [description, setDescription] = useState(product?.description ?? "");

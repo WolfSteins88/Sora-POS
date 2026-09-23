@@ -21,6 +21,8 @@ export default async function TransactionDetailPage({ params }: { params: Promis
               transaction_number: String(trx.transaction_number),
               created_at: String(trx.created_at),
               total: String(trx.total),
+              cashier_name: trx.cashier_name ? String(trx.cashier_name) : "",
+              note: trx.note ? String(trx.note) : "",
               items: trx.items.map((item: { product_name: string; quantity: number; subtotal: string | number }) => ({
                 product_name: item.product_name,
                 quantity: item.quantity,

@@ -1,120 +1,109 @@
-import Link from "next/link";
-import { deleteCategory, saveCategory } from "@/app/actions/ops";
-import {
-  Field,
-  PageHeader,
-  PrimaryButton,
-  Card,
-  EmptyState,
-  dangerActionClass,
-  editActionClass,
-  ghostButtonClass,
-  inputClass,
-  tableCellClass,
-  tableHeadCellClass,
-  tableHeadRowClass,
-} from "@/components/ui";
-import { ImageField } from "@/components/ImageField";
-import { ProductImage } from "@/components/ProductImage";
-import { CatalogTabs } from "@/components/CatalogTabs";
-import { listCategories } from "@/server/queries";
+import { getSql } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
 import { catalogPackFromQuery } from "@/lib/theme";
+import { listCategories } from "@/server/queries";
+import { CategoryCatalog } from "./CategoryCatalog";
+import { CategoryForm } from "./CategoryForm";
+
+const PAGE_SIZE = 8;
 
 export default async function CategoriesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string; pack?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; sort?: string; page?: string; id?: string; new?: string; pack?: string }>;
 }) {
-  const { edit, pack: packQuery } = await searchParams;
+  const params = await searchParams;
   const shopMode = await getSetting("shop_mode", "fnb");
-  const pack = catalogPackFromQuery(packQuery, shopMode);
-  const rows = await listCategories(false, pack);
-  const current = rows.find((row) => row.id === edit);
+  const pack = catalogPackFromQuery(params.pack, shopMode);
+  const [rows, counts] = await Promise.all([
+    listCategories(false, pack),
+    getSql()<{ id: string; n: number }[]>`
+      SELECT category_id::text AS id, COUNT(*)::int AS n FROM products GROUP BY category_id
+    `,
+  ]);
+  const countById = new Map(counts.map((row) => [row.id, Number(row.n) || 0]));
+  const q = params.q?.trim().toLowerCase() ?? "";
+  const status = params.status === "active" || params.status === "inactive" ? params.status : "";
+  const sort = params.sort === "name" || params.sort === "count" ? params.sort : "order";
+  const filtered = rows
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      image: row.image,
+      sortOrder: row.sortOrder,
+      status: row.status,
+      productCount: countById.get(row.id) ?? 0,
+    }))
+    .filter((row) => {
+      if (q && !row.name.toLowerCase().includes(q)) return false;
+      if (status && row.status !== status) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sort === "name") return a.name.localeCompare(b.name, "id");
+      if (sort === "count") return b.productCount - a.productCount || a.name.localeCompare(b.name, "id");
+      return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "id");
+    });
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const page = Math.min(Math.max(1, Number(params.page) || 1), pages);
+  const startIndex = (page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(startIndex, startIndex + PAGE_SIZE).map((row, index) => ({ ...row, number: startIndex + index + 1 }));
+  const creating = params.new === "1";
+  const current = creating ? null : rows.find((row) => row.id === params.id) ?? null;
+  const query = {
+    q: params.q?.trim() ?? "",
+    status,
+    sort,
+    page: String(page),
+    id: current?.id ?? "",
+    fresh: creating ? "1" : "",
+  };
+
   return (
     <div>
-      <PageHeader
-        title="Kategori"
-        description={pack === "retail" ? "Kategori katalog retail." : "Kategori katalog F&B."}
-      />
-      <CatalogTabs basePath="/categories" pack={pack} />
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <Card>
-          <h2 className="mb-3 font-semibold">{current ? "Ubah kategori" : "Tambah"}</h2>
-          <form action={saveCategory} className="space-y-3" key={current?.id ?? "new"}>
-            {current ? <input type="hidden" name="id" value={current.id} /> : null}
-            <input type="hidden" name="catalogPack" value={current?.catalogPack ?? pack} />
-            <Field label="Foto" hint="JPG, PNG, atau WEBP. Maksimal 2MB.">
-              <ImageField kind="categories" filename={current?.image} name={current?.name || "Kategori"} />
-            </Field>
-            <Field label="Nama">
-              <input name="name" required defaultValue={current?.name} key={current?.id ?? "new"} className={inputClass} />
-            </Field>
-            <Field label="Deskripsi">
-              <input name="description" defaultValue={current?.description ?? ""} className={inputClass} />
-            </Field>
-            <Field label="Urutan">
-              <input name="sortOrder" type="number" defaultValue={current?.sortOrder ?? 0} className={inputClass} />
-            </Field>
-            <Field label="Status">
-              <select name="status" className={inputClass} defaultValue={current?.status ?? "active"}>
-                <option value="active">Aktif</option>
-                <option value="inactive">Nonaktif</option>
-              </select>
-            </Field>
-            <div className="flex gap-2">
-              <PrimaryButton type="submit">Simpan</PrimaryButton>
-              {current ? (
-                <Link href={`/categories?pack=${pack}`} className={ghostButtonClass}>
-                  Batal
-                </Link>
-              ) : null}
+      <div className="mb-5">
+        <h1 className="text-2xl font-semibold tracking-tight">Kategori</h1>
+        <p className="mt-1 text-sm text-muted">Kelola kategori menu untuk mengatur produk dengan lebih rapi.</p>
+      </div>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <CategoryCatalog
+          query={query}
+          rows={pageRows}
+          total={filtered.length}
+          page={page}
+          pages={pages}
+          start={filtered.length === 0 ? 0 : startIndex + 1}
+          end={Math.min(startIndex + PAGE_SIZE, filtered.length)}
+        />
+        <aside className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+          {creating || current ? (
+            <>
+              <h2 className="mb-4 font-semibold">{current ? "Detail Kategori" : "Tambah Kategori"}</h2>
+              <CategoryForm
+                key={current?.id ?? "new"}
+                category={
+                  current
+                    ? {
+                        id: current.id,
+                        name: current.name,
+                        description: current.description,
+                        image: current.image,
+                        sortOrder: current.sortOrder,
+                        status: current.status,
+                      }
+                    : null
+                }
+                pack={pack}
+              />
+            </>
+          ) : (
+            <div>
+              <h2 className="font-semibold">Detail Kategori</h2>
+              <p className="mt-3 text-sm text-muted">Pilih kategori untuk melihat dan mengubah detailnya.</p>
             </div>
-          </form>
-        </Card>
-        {rows.length === 0 ? (
-          <EmptyState
-            title={pack === "retail" ? "Belum ada kategori Retail" : "Belum ada kategori F&B"}
-            description="Tambah kategori di formulir kiri."
-          />
-        ) : (
-          <Card className="overflow-hidden p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className={tableHeadRowClass}>
-                  <th className={tableHeadCellClass}>Foto</th>
-                  <th className={tableHeadCellClass}>Nama</th>
-                  <th className={tableHeadCellClass}>Status</th>
-                  <th className={`${tableHeadCellClass} text-right`}>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-line last:border-0">
-                    <td className={tableCellClass}>
-                      <ProductImage kind="categories" filename={row.image} name={row.name} className="h-10 w-10 rounded-lg object-cover" />
-                    </td>
-                    <td className={`${tableCellClass} font-semibold`}>{row.name}</td>
-                    <td className={tableCellClass}>{row.status}</td>
-                    <td className={`${tableCellClass} text-right`}>
-                      <div className="flex flex-row items-center justify-end gap-2">
-                        <Link href={`/categories?pack=${pack}&edit=${row.id}`} className={editActionClass}>
-                          Ubah
-                        </Link>
-                        <form action={deleteCategory} className="inline">
-                          <input type="hidden" name="id" value={row.id} />
-                          <button type="submit" className={dangerActionClass}>
-                            Hapus
-                          </button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        )}
+          )}
+        </aside>
       </div>
     </div>
   );

@@ -13,7 +13,7 @@ import {
   ghostButtonClass,
   inputClass,
 } from "@/components/ui";
-import { formatIdDecimal, money, num, parseIdNumber } from "@/lib/format";
+import { formatIdDecimal, money, parseIdNumber } from "@/lib/format";
 import type { RecipeHppRow } from "@/server/queries";
 
 type InventoryOption = { id: string; name: string; sku: string; unit: string; cost: string };
@@ -35,8 +35,8 @@ function linesFromProduct(row: RecipeHppRow | undefined): Line[] {
   return row.lines.map((line) => ({
     key: uid(),
     inventoryItemId: line.inventoryItemId,
-    quantity: num(line.quantity),
-    cost: num(line.cost),
+    quantity: Number(line.quantity) || 0,
+    cost: Number(line.cost) || 0,
   }));
 }
 
@@ -50,6 +50,20 @@ function marginFromPrice(hpp: number, price: number) {
   return Math.round(((price - hpp) / price) * 1000) / 10;
 }
 
+function hppOf(rows: Line[]) {
+  return rows.reduce((sum, line) => sum + line.quantity * line.cost, 0);
+}
+
+function startFrom(row: RecipeHppRow | undefined) {
+  const nextLines = linesFromProduct(row);
+  const nextPrice = Number(row?.price) || 0;
+  return {
+    nextLines,
+    nextPrice,
+    nextMargin: marginFromPrice(hppOf(nextLines), nextPrice),
+  };
+}
+
 export function HppCalculator({
   products,
   inventory,
@@ -58,18 +72,11 @@ export function HppCalculator({
   inventory: InventoryOption[];
 }) {
   const [productId, setProductId] = useState(products[0]?.id ?? "");
-  const selected = products.find((p) => p.id === productId);
-  const [lines, setLines] = useState<Line[]>(() => linesFromProduct(products[0]));
-  const [price, setPrice] = useState(() => num(products[0]?.price));
-  const [marginPct, setMarginPct] = useState(() => {
-    const row = products[0];
-    return row ? marginFromPrice(num(row.hpp), num(row.price)) : 0;
-  });
-  const [marginText, setMarginText] = useState(() => {
-    const row = products[0];
-    const m = row ? marginFromPrice(num(row.hpp), num(row.price)) : 0;
-    return m ? formatIdDecimal(m, 1) : "";
-  });
+  const opened = startFrom(products[0]);
+  const [lines, setLines] = useState<Line[]>(opened.nextLines);
+  const [price, setPrice] = useState(opened.nextPrice);
+  const [marginPct, setMarginPct] = useState(opened.nextMargin);
+  const [marginText, setMarginText] = useState(opened.nextMargin ? formatIdDecimal(opened.nextMargin, 1) : "");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [pending, setPending] = useState(false);
@@ -83,15 +90,12 @@ export function HppCalculator({
   const marginRp = price - hpp;
 
   function loadProduct(id: string) {
-    const row = products.find((p) => p.id === id);
+    const next = startFrom(products.find((p) => p.id === id));
     setProductId(id);
-    setLines(linesFromProduct(row));
-    const nextPrice = num(row?.price);
-    const nextHpp = num(row?.hpp);
-    const nextMargin = marginFromPrice(nextHpp, nextPrice);
-    setPrice(nextPrice);
-    setMarginPct(nextMargin);
-    setMarginText(nextMargin ? formatIdDecimal(nextMargin, 1) : "");
+    setLines(next.nextLines);
+    setPrice(next.nextPrice);
+    setMarginPct(next.nextMargin);
+    setMarginText(next.nextMargin ? formatIdDecimal(next.nextMargin, 1) : "");
     setError("");
     setSaved("");
   }
@@ -119,7 +123,7 @@ export function HppCalculator({
     const item = inventory.find((inv) => inv.id === inventoryItemId);
     patchLine(key, {
       inventoryItemId,
-      cost: item ? num(item.cost) : 0,
+      cost: item ? Number(item.cost) || 0 : 0,
       draft: undefined,
     });
   }
@@ -148,7 +152,7 @@ export function HppCalculator({
   function addInventoryLine() {
     const first = inventory[0];
     const line: Line = first
-      ? { key: uid(), inventoryItemId: first.id, quantity: 1, cost: num(first.cost) }
+      ? { key: uid(), inventoryItemId: first.id, quantity: 1, cost: Number(first.cost) || 0 }
       : { key: uid(), inventoryItemId: "", quantity: 1, cost: 0, draft: { name: "", sku: "", unit: "pcs" } };
     commitLines([...lines, line]);
   }
@@ -219,106 +223,101 @@ export function HppCalculator({
   return (
     <Card className="flex h-full flex-col p-5">
       <h2 className="text-lg font-semibold">Kalkulator HPP</h2>
-      <p className="mt-1 text-sm text-muted">Isi bahan, tentukan margin %, lalu simpan modal dan harga jual.</p>
+      <p className="mt-1 text-sm text-muted">Isi bahan, tentukan margin, lalu simpan modal dan harga jual.</p>
 
       <div className="mt-4">
-        <Field label="Produk racikan">
+        <Field label="Racikan">
           <select className={inputClass} value={productId} onChange={(e) => loadProduct(e.target.value)}>
             {products.map((row) => (
               <option key={row.id} value={row.id}>
-                {row.name} ({row.sku})
+                {row.name}
               </option>
             ))}
           </select>
         </Field>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[40rem] text-sm">
-          <thead>
-            <tr className="text-left text-xs text-muted">
-              <th className="pb-2 pr-2 font-medium">Bahan</th>
-              <th className="pb-2 pr-2 font-medium">Qty</th>
-              <th className="pb-2 pr-2 font-medium">Satuan</th>
-              <th className="pb-2 pr-2 font-medium">Harga modal</th>
-              <th className="pb-2 pr-2 font-medium">Subtotal</th>
-              <th className="pb-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((line) => {
-              const inv = inventory.find((item) => item.id === line.inventoryItemId);
-              const unit = line.draft?.unit ?? inv?.unit ?? "";
-              return (
-                <tr key={line.key} className="border-t border-line align-top">
-                  <td className="py-2 pr-2">
-                    {line.draft ? (
-                      <p className="text-sm font-medium">
-                        {line.draft.name}{" "}
-                        <span className="text-xs font-normal text-muted">
-                          {line.draft.sku ? `(baru · ${line.draft.sku})` : "(baru)"}
-                        </span>
-                      </p>
-                    ) : (
-                      <select
-                        className={compactInputClass}
-                        aria-label="Bahan"
-                        value={line.inventoryItemId}
-                        onChange={(e) => onPickIngredient(line.key, e.target.value)}
-                      >
-                        {inventory.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </td>
-                  <td className="py-2 pr-2">
-                    <input
-                      className={`${compactInputClass} w-24`}
-                      inputMode="decimal"
-                      aria-label="Jumlah"
-                      value={line.quantity ? formatIdDecimal(line.quantity) : ""}
-                      onChange={(e) => patchLine(line.key, { quantity: parseIdNumber(e.target.value) })}
-                    />
-                  </td>
-                  <td className="py-2 pr-2 pt-3 text-muted">{unit}</td>
-                  <td className="py-2 pr-2">
-                    <MoneyInput
-                      key={`${line.key}-cost`}
-                      value={line.cost}
-                      onValueChange={(n) => patchLine(line.key, { cost: n })}
-                      className={compactInputClass}
-                    />
-                  </td>
-                  <td className="whitespace-nowrap py-2 pr-2 pt-3">{money(line.quantity * line.cost)}</td>
-                  <td className="py-2">
-                    <button type="button" className={dangerActionClass} onClick={() => removeLine(line.key)}>
-                      Hapus
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="mt-4 space-y-3">
+        {lines.map((line) => {
+          const inv = inventory.find((item) => item.id === line.inventoryItemId);
+          const unit = line.draft?.unit ?? inv?.unit ?? "";
+          return (
+            <div key={line.key} className="rounded-2xl border border-line p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  {line.draft ? (
+                    <p className="truncate text-sm font-medium">
+                      {line.draft.name}{" "}
+                      <span className="font-normal text-muted">{line.draft.sku ? `(baru · ${line.draft.sku})` : "(baru)"}</span>
+                    </p>
+                  ) : (
+                    <select
+                      className={`${compactInputClass} w-full`}
+                      aria-label="Bahan"
+                      value={line.inventoryItemId}
+                      onChange={(e) => onPickIngredient(line.key, e.target.value)}
+                    >
+                      {inventory.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <button type="button" className={dangerActionClass} onClick={() => removeLine(line.key)}>
+                  Hapus
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <label className="text-xs text-muted">
+                  Jumlah
+                  <input
+                    className={`${compactInputClass} mt-1 w-full`}
+                    inputMode="decimal"
+                    aria-label="Jumlah"
+                    value={line.quantity ? formatIdDecimal(line.quantity) : ""}
+                    onChange={(e) => patchLine(line.key, { quantity: parseIdNumber(e.target.value) })}
+                  />
+                </label>
+                <label className="text-xs text-muted">
+                  Satuan
+                  <span className="mt-1 flex h-9 items-center rounded-xl bg-chip px-2.5 text-sm text-ink">{unit || "—"}</span>
+                </label>
+                <label className="text-xs text-muted">
+                  Harga modal
+                  <MoneyInput
+                    key={`${line.key}-cost`}
+                    value={line.cost}
+                    onValueChange={(n) => patchLine(line.key, { cost: n })}
+                    className={`${compactInputClass} mt-1 w-full`}
+                  />
+                </label>
+                <label className="text-xs text-muted">
+                  Subtotal
+                  <span className="mt-1 flex h-9 items-center text-sm font-semibold text-ink">{money(line.quantity * line.cost)}</span>
+                </label>
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <button type="button" className={`${ghostButtonClass} mt-3`} onClick={addInventoryLine}>
+
+      <button type="button" className={`${ghostButtonClass} mt-3 h-11 w-full border-dashed`} onClick={addInventoryLine}>
         Tambah baris
       </button>
 
-      <div className="mt-5 rounded-xl border border-line p-4">
+      <div className="mt-5 rounded-2xl border border-line p-4">
         <p className="text-sm font-semibold">Bahan baru</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Field label="Nama">
-            <input className={compactInputClass} value={newItem.name} onChange={(e) => setNewItem((s) => ({ ...s, name: e.target.value }))} />
+            <input className={inputClass} value={newItem.name} onChange={(e) => setNewItem((s) => ({ ...s, name: e.target.value }))} />
           </Field>
           <Field label="SKU" hint="Kosongkan untuk otomatis">
-            <input className={compactInputClass} value={newItem.sku} onChange={(e) => setNewItem((s) => ({ ...s, sku: e.target.value }))} placeholder="Otomatis" />
+            <input className={inputClass} value={newItem.sku} onChange={(e) => setNewItem((s) => ({ ...s, sku: e.target.value }))} placeholder="Otomatis" />
           </Field>
           <Field label="Satuan">
-            <select className={compactInputClass} value={newItem.unit} onChange={(e) => setNewItem((s) => ({ ...s, unit: e.target.value }))}>
+            <select className={inputClass} value={newItem.unit} onChange={(e) => setNewItem((s) => ({ ...s, unit: e.target.value }))}>
               <option value="pcs">pcs</option>
               <option value="g">g</option>
               <option value="kg">kg</option>
@@ -331,33 +330,32 @@ export function HppCalculator({
               key={`${productId}-new-cost`}
               value={newItem.cost}
               onValueChange={(n) => setNewItem((s) => ({ ...s, cost: n }))}
-              className={compactInputClass}
             />
           </Field>
-          <Field label="Qty di resep">
+          <Field label="Jumlah">
             <input
-              className={compactInputClass}
+              className={inputClass}
               inputMode="decimal"
               value={newItem.quantity ? formatIdDecimal(newItem.quantity) : ""}
               onChange={(e) => setNewItem((s) => ({ ...s, quantity: parseIdNumber(e.target.value) }))}
             />
           </Field>
         </div>
-        <button type="button" className={`${ghostButtonClass} mt-3`} onClick={addNewIngredient}>
+        <button type="button" className={`${ghostButtonClass} mt-3 h-11`} onClick={addNewIngredient}>
           Pasang ke resep
         </button>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl bg-chip px-4 py-3">
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-chip px-4 py-3">
           <p className="text-xs text-muted">HPP</p>
-          <p className="mt-1 text-xl font-semibold">{hpp > 0 ? money(hpp) : "Isi bahan dulu"}</p>
+          <p className="mt-1 text-lg font-semibold">{hpp > 0 ? money(hpp) : "Isi bahan dulu"}</p>
         </div>
-        <div className="rounded-xl bg-chip px-4 py-3">
-          <p className="text-xs text-muted">Margin Rp</p>
-          <p className="mt-1 text-xl font-semibold">{hpp > 0 && price > 0 ? money(marginRp) : "—"}</p>
+        <div className="rounded-2xl bg-chip px-4 py-3">
+          <p className="text-xs text-muted">Margin rupiah</p>
+          <p className="mt-1 text-lg font-semibold">{hpp > 0 && price > 0 ? money(marginRp) : "—"}</p>
         </div>
-        <Field label="Margin %">
+        <Field label="Margin persen">
           <input
             className={inputClass}
             inputMode="decimal"
@@ -376,7 +374,7 @@ export function HppCalculator({
       {saved ? <p className="mt-3 text-sm text-ok">{saved}</p> : null}
 
       <div className="mt-4">
-        <PrimaryButton type="button" disabled={pending || !hpp} onClick={() => void save()}>
+        <PrimaryButton type="button" className="h-11 w-full" disabled={pending || !hpp} onClick={() => void save()}>
           {pending ? "Menyimpan…" : "Simpan HPP"}
         </PrimaryButton>
       </div>

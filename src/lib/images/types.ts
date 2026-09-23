@@ -1,4 +1,4 @@
-export const IMAGE_KINDS = ["products", "categories", "logo"] as const;
+export const IMAGE_KINDS = ["products", "categories", "inventory", "users", "logo"] as const;
 export type ImageKind = (typeof IMAGE_KINDS)[number];
 
 export const IMAGE_MAX_BYTES = 2 * 1024 * 1024;

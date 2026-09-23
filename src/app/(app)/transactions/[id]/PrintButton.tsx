@@ -1,32 +1,40 @@
 "use client";
 
 import { PrimaryButton } from "@/components/ui";
+import { receiptSectionOn } from "@/lib/receipt";
 
 type Trx = {
   transaction_number: string;
   created_at: string;
   total: string;
+  cashier_name?: string;
+  note?: string;
   items: { product_name: string; quantity: number; subtotal: string }[];
   payments: { method: string; amount: string; change_amount: string }[];
 };
 
 function receiptText(trx: Trx, settings: Record<string, string>) {
   const w = settings.receipt_paper_size === "58mm" ? 32 : 42;
-  const line = (ch = "-") => ch.repeat(w);
-  const rows = [
-    settings.shop_name || "Toko",
-    settings.shop_address || "",
-    settings.shop_phone || "",
-    line(),
-    trx.transaction_number,
-    new Date(trx.created_at).toLocaleString("id-ID"),
-    line(),
-    ...trx.items.map((i) => `${i.quantity}x ${i.product_name}`),
-    line(),
-    `TOTAL ${trx.total}`,
-    ...(trx.payments ?? []).map((p) => `${p.method} ${p.amount} kb ${p.change_amount}`),
-    settings.receipt_footer || "Terima kasih",
-  ];
+  const line = () => "-".repeat(w);
+  const rows: string[] = [];
+  if (receiptSectionOn(settings, "receipt_show_name")) rows.push(settings.shop_name || "Toko");
+  if (receiptSectionOn(settings, "receipt_show_address") && settings.shop_address) rows.push(settings.shop_address);
+  if (settings.shop_phone) rows.push(settings.shop_phone);
+  rows.push(line());
+  if (receiptSectionOn(settings, "receipt_show_number")) rows.push(trx.transaction_number);
+  if (receiptSectionOn(settings, "receipt_show_time")) rows.push(new Date(trx.created_at).toLocaleString("id-ID"));
+  if (receiptSectionOn(settings, "receipt_show_cashier") && trx.cashier_name) rows.push(trx.cashier_name);
+  if (receiptSectionOn(settings, "receipt_show_items")) {
+    rows.push(line());
+    rows.push(...trx.items.map((i) => `${i.quantity}x ${i.product_name}`));
+  }
+  if (receiptSectionOn(settings, "receipt_show_note") && trx.note) rows.push(trx.note);
+  rows.push(line());
+  if (receiptSectionOn(settings, "receipt_show_total")) rows.push(`TOTAL ${trx.total}`);
+  if (receiptSectionOn(settings, "receipt_show_method")) {
+    rows.push(...(trx.payments ?? []).map((p) => `${p.method} ${p.amount} kb ${p.change_amount}`));
+  }
+  if (receiptSectionOn(settings, "receipt_show_footer")) rows.push(settings.receipt_footer || "Terima kasih");
   return rows.filter(Boolean).join("\n");
 }
 

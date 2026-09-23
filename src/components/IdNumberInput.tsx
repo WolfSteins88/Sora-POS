@@ -10,12 +10,14 @@ export function IdNumberInput({
   required,
   placeholder = "0",
   id,
+  onValueChange,
 }: {
   name?: string;
   defaultValue?: number | string;
   required?: boolean;
   placeholder?: string;
   id?: string;
+  onValueChange?: (n: number) => void;
 }) {
   const [text, setText] = useState(() => {
     const n = parseIdNumber(defaultValue);
@@ -26,6 +28,7 @@ export function IdNumberInput({
   function handle(raw: string) {
     const cleaned = raw.replaceAll(/[^\d,]/g, "");
     setText(cleaned);
+    onValueChange?.(parseIdNumber(cleaned));
   }
 
   return (

@@ -1,5 +1,8 @@
 "use server";
 
+import { copyFile } from "node:fs/promises";
+import path from "node:path";
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
@@ -12,6 +15,7 @@ import { parseIdNumber } from "@/lib/format";
 import { saveUpload } from "@/lib/images/save-local";
 import { getSetting } from "@/lib/settings";
 import { restoreBackupDump, type BackupDump } from "@/lib/backup";
+import { RECEIPT_TOGGLES } from "@/lib/receipt";
 import { nextSku, skuPrefixForProduct } from "@/lib/sku";
 import { normalizeShopMode } from "@/lib/theme";
 import {
@@ -49,6 +53,17 @@ function num(form: FormData, key: string) {
   return parseIdNumber(form.get(key) as string);
 }
 
+function revalidateProductViews(productId: string) {
+  revalidatePath("/products");
+  revalidatePath(`/products/${productId}`);
+  revalidatePath("/recipes");
+  revalidatePath(`/recipes/${productId}`);
+  revalidatePath("/pos");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  revalidatePath("/transactions");
+}
+
 export async function saveCategory(formData: FormData) {
   const session = await requireSession();
   guard(session.role, "categories");
@@ -83,6 +98,18 @@ export async function deleteCategory(formData: FormData) {
   const id = str(formData, "id");
   await getDb().delete(categories).where(eq(categories.id, id));
   revalidatePath("/categories");
+  revalidatePath("/pos");
+  revalidatePath("/products");
+}
+
+export async function toggleCategoryStatus(formData: FormData) {
+  const session = await requireSession();
+  guard(session.role, "categories");
+  const id = str(formData, "id");
+  const status = str(formData, "status") === "inactive" ? "inactive" : "active";
+  await getDb().update(categories).set({ status, updatedAt: new Date() }).where(eq(categories.id, id));
+  revalidatePath("/categories");
+  revalidatePath("/pos");
 }
 
 export async function saveProduct(formData: FormData) {
@@ -139,9 +166,7 @@ export async function saveProduct(formData: FormData) {
     }
     const image = await saveUpload(imageFile, "products", existing.image);
     await db.update(products).set({ ...values, image }).where(eq(products.id, id));
-    revalidatePath("/products");
-    revalidatePath("/pos");
-    revalidatePath(`/products/${id}`);
+    revalidateProductViews(id);
     return;
   }
   if (!category || category.catalogPack !== catalogPack) {
@@ -153,8 +178,7 @@ export async function saveProduct(formData: FormData) {
   }
   const image = await saveUpload(imageFile, "products");
   const [created] = await db.insert(products).values({ ...values, image }).returning({ id: products.id });
-  revalidatePath("/products");
-  revalidatePath("/pos");
+  revalidateProductViews(created.id);
   if (str(formData, "next") === "desk") {
     const packQuery = catalogPack === "retail" ? "&pack=retail" : "";
     redirect(`/products?edit=${created.id}&id=${created.id}${packQuery}`);
@@ -271,21 +295,26 @@ export async function saveInventoryItem(formData: FormData) {
     updatedAt: new Date(),
   };
   if (!values.name) throw new Error("Nama wajib.");
+  const file = formData.get("image");
+  const imageFile = file instanceof File ? file : null;
   if (id) {
     const [existing] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
     if (!existing) throw new Error("Bahan tidak ditemukan.");
-    const { currentStock: _stock, ...rest } = values;
-    await db.update(inventoryItems).set({ ...rest, sku: existing.sku }).where(eq(inventoryItems.id, id));
+    const image = await saveUpload(imageFile, "inventory", existing.image);
+    const { currentStock: _stock, sku: _sku, ...rest } = values;
+    await db.update(inventoryItems).set({ ...rest, sku: existing.sku, image }).where(eq(inventoryItems.id, id));
     await writeUnlockedRecipeCosts({ inventoryItemId: id });
   } else {
     if (!values.sku) {
       const rows = await db.select({ sku: inventoryItems.sku }).from(inventoryItems);
       values.sku = nextSku(rows.map((row) => row.sku), "ING");
     }
-    await db.insert(inventoryItems).values(values);
+    const image = await saveUpload(imageFile, "inventory");
+    await db.insert(inventoryItems).values({ ...values, image });
   }
   revalidatePath("/inventory");
   revalidatePath("/printer");
+  redirect("/inventory");
 }
 
 export async function deleteInventoryItem(formData: FormData) {
@@ -327,6 +356,70 @@ export async function moveInventory(formData: FormData) {
   revalidatePath("/inventory");
 }
 
+export async function saveRecipeForm(formData: FormData) {
+  const session = await requireSession();
+  guard(session.role, "recipes");
+  const db = getDb();
+  const id = str(formData, "id");
+  const name = str(formData, "name");
+  const categoryId = str(formData, "categoryId");
+  const portion = str(formData, "portion").slice(0, 100) || null;
+  const note = str(formData, "note").slice(0, 500) || null;
+  const price = String(num(formData, "price"));
+  const status = (str(formData, "status") === "inactive" ? "inactive" : "active") as "active" | "inactive";
+  if (!name || !categoryId) throw new Error("Nama dan kategori wajib.");
+  const [category] = await db.select().from(categories).where(eq(categories.id, categoryId)).limit(1);
+  if (!category || category.catalogPack !== "fnb") throw new Error("Kategori tidak cocok.");
+  const itemIds = formData.getAll("inventoryItemId").map((value) => String(value));
+  const quantities = formData.getAll("quantity").map((value) => Number(value));
+  const file = formData.get("image");
+  const imageFile = file instanceof File ? file : null;
+  let productId = id;
+  if (id) {
+    const [existing] = await db.select().from(products).where(eq(products.id, id)).limit(1);
+    if (!existing || existing.kind !== "recipe") throw new Error("Resep tidak ditemukan.");
+    const image = await saveUpload(imageFile, "products", existing.image);
+    await db
+      .update(products)
+      .set({ name, categoryId, price, status, image, updatedAt: new Date() })
+      .where(eq(products.id, id));
+  } else {
+    const skus = await db.select({ sku: products.sku }).from(products);
+    const sku = nextSku(skus.map((row) => row.sku), skuPrefixForProduct("fnb"));
+    const image = await saveUpload(imageFile, "products");
+    const [created] = await db
+      .insert(products)
+      .values({ categoryId, kind: "recipe", name, sku, price, status, image, catalogPack: "fnb" })
+      .returning({ id: products.id });
+    productId = created.id;
+  }
+  const sql = getSql();
+  await sql.begin(async (tx) => {
+    let [recipe] = await tx<{ id: string }[]>`SELECT id FROM recipes WHERE product_id = ${productId}`;
+    if (!recipe) {
+      [recipe] = await tx`
+        INSERT INTO recipes (product_id, note, portion) VALUES (${productId}, ${note}, ${portion}) RETURNING id
+      `;
+    } else {
+      await tx`UPDATE recipes SET note = ${note}, portion = ${portion}, updated_at = NOW() WHERE id = ${recipe.id}`;
+      await tx`DELETE FROM recipe_items WHERE recipe_id = ${recipe.id}`;
+    }
+    for (let index = 0; index < itemIds.length; index++) {
+      const inventoryItemId = itemIds[index];
+      const quantity = quantities[index];
+      if (!inventoryItemId || !(quantity > 0)) continue;
+      await tx`
+        INSERT INTO recipe_items (recipe_id, inventory_item_id, quantity)
+        VALUES (${recipe.id}, ${inventoryItemId}, ${quantity})
+      `;
+    }
+  });
+  await writeUnlockedRecipeCosts({ productId });
+  revalidateProductViews(productId);
+  revalidatePath("/printer");
+  redirect(`/recipes?id=${productId}`);
+}
+
 export async function saveRecipe(productId: string, items: { inventoryItemId: string; quantity: number }[], note: string) {
   const session = await requireSession();
   guard(session.role, "recipes");
@@ -352,6 +445,66 @@ export async function saveRecipe(productId: string, items: { inventoryItemId: st
   revalidatePath(`/recipes/${productId}`);
   revalidatePath("/printer");
   revalidatePath("/products");
+}
+
+export async function duplicateRecipe(formData: FormData) {
+  const session = await requireSession();
+  guard(session.role, "recipes");
+  const productId = str(formData, "id");
+  const db = getDb();
+  const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
+  if (!product || product.kind !== "recipe") throw new Error("Resep tidak ditemukan.");
+  const [recipe] = await db.select().from(recipes).where(eq(recipes.productId, productId)).limit(1);
+  const lines = recipe ? await db.select().from(recipeItems).where(eq(recipeItems.recipeId, recipe.id)) : [];
+  const skus = await db.select({ sku: products.sku }).from(products);
+  const sku = nextSku(skus.map((row) => row.sku), skuPrefixForProduct(product.catalogPack));
+  const image = await copyRecipeImage(product.image);
+  const name = `Salinan ${product.name}`.slice(0, 150);
+  const sql = getSql();
+  const created = await sql.begin(async (tx) => {
+    const [row] = await tx<{ id: string }[]>`
+      INSERT INTO products (
+        category_id, kind, name, sku, description, price, cost, image, status, stock_status,
+        current_stock, minimum_stock, is_featured, sort_order, catalog_pack
+      ) VALUES (
+        ${product.categoryId}, 'recipe', ${name}, ${sku}, ${product.description}, ${product.price}, ${product.cost},
+        ${image}, ${product.status}, ${product.stockStatus}, 0, 0, ${product.isFeatured}, ${product.sortOrder}, ${product.catalogPack}
+      )
+      RETURNING id
+    `;
+    const [copy] = await tx<{ id: string }[]>`
+      INSERT INTO recipes (product_id, note, portion, cost_locked)
+      VALUES (${row.id}, ${recipe?.note ?? null}, ${recipe?.portion ?? null}, ${recipe?.costLocked ?? false})
+      RETURNING id
+    `;
+    for (const line of lines) {
+      await tx`
+        INSERT INTO recipe_items (recipe_id, inventory_item_id, quantity)
+        VALUES (${copy.id}, ${line.inventoryItemId}, ${line.quantity})
+      `;
+    }
+    return row.id;
+  });
+  await writeUnlockedRecipeCosts({ productId: created });
+  revalidatePath("/recipes");
+  revalidatePath("/products");
+  revalidatePath("/pos");
+  revalidatePath("/printer");
+  redirect(`/recipes/${created}`);
+}
+
+async function copyRecipeImage(filename: string | null) {
+  if (!filename) return null;
+  const safe = path.basename(filename);
+  if (safe !== filename) return null;
+  const next = `${randomBytes(12).toString("hex")}${path.extname(safe)}`;
+  const dir = path.join(process.cwd(), "storage", "uploads", "products");
+  try {
+    await copyFile(path.join(dir, safe), path.join(dir, next));
+    return next;
+  } catch {
+    return null;
+  }
 }
 
 export async function openShift(formData: FormData) {
@@ -516,12 +669,19 @@ export async function saveUser(formData: FormData) {
     updatedAt: new Date(),
   };
   const password = str(formData, "password");
+  const phone = str(formData, "phone") || null;
   if (!id && !password) throw new Error("Password wajib untuk pengguna baru.");
   if (password) values.passwordHash = await bcrypt.hash(password, 12);
+  const file = formData.get("image");
+  const imageFile = file instanceof File ? file : null;
   if (id) {
-    await db.update(users).set(values).where(eq(users.id, id));
+    const [existing] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!existing) throw new Error("Pengguna tidak ditemukan.");
+    const image = await saveUpload(imageFile, "users", existing.image);
+    await db.update(users).set({ ...values, phone, image }).where(eq(users.id, id));
   } else {
-    await db.insert(users).values(values as typeof users.$inferInsert);
+    const image = await saveUpload(imageFile, "users");
+    await db.insert(users).values({ ...(values as typeof users.$inferInsert), phone, image });
   }
   revalidatePath("/users");
 }
@@ -654,7 +814,34 @@ export async function savePrinter(formData: FormData) {
   };
   if (id) await db.update(printers).set(values).where(eq(printers.id, id));
   else await db.insert(printers).values(values);
+
+  const textSettings: Record<string, string> = {
+    shop_name: str(formData, "shop_name"),
+    shop_address: str(formData, "shop_address"),
+    receipt_footer: str(formData, "receipt_footer").slice(0, 100),
+    receipt_paper_size: values.paperSize,
+  };
+  for (const [key] of RECEIPT_TOGGLES) {
+    textSettings[key] = formData.get(key) === "1" ? "1" : "0";
+  }
+  for (const [key, value] of Object.entries(textSettings)) {
+    const [row] = await db.select({ id: settings.id }).from(settings).where(eq(settings.settingKey, key)).limit(1);
+    if (row) await db.update(settings).set({ settingValue: value }).where(eq(settings.settingKey, key));
+    else await db.insert(settings).values({ settingKey: key, settingValue: value });
+  }
+
+  const logo = formData.get("logo");
+  if (logo instanceof File && logo.size > 0) {
+    const [logoRow] = await db.select().from(settings).where(eq(settings.settingKey, "shop_logo")).limit(1);
+    const filename = await saveUpload(logo, "logo", logoRow?.settingValue);
+    if (logoRow) await db.update(settings).set({ settingValue: filename ?? "" }).where(eq(settings.settingKey, "shop_logo"));
+    else await db.insert(settings).values({ settingKey: "shop_logo", settingValue: filename ?? "" });
+  }
+
+  revalidatePath("/", "layout");
   revalidatePath("/printer");
+  revalidatePath("/settings");
+  revalidatePath("/transactions");
 }
 
 export async function saveHppCalculator(payload: {

@@ -54,8 +54,11 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 100 }).notNull(),
   username: varchar("username", { length: 50 }).notNull().unique(),
   email: varchar("email", { length: 120 }),
+  phone: varchar("phone", { length: 30 }),
+  image: varchar("image", { length: 255 }),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  lastLogin: timestamp("last_login", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -236,6 +239,7 @@ export const inventoryItems = pgTable("inventory_items", {
   currentStock: numeric("current_stock", { precision: 12, scale: 3 }).notNull().default("0"),
   minimumStock: numeric("minimum_stock", { precision: 12, scale: 3 }).notNull().default("0"),
   cost: numeric("cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  image: varchar("image", { length: 255 }),
   status: entityStatusEnum("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -262,7 +266,8 @@ export const recipes = pgTable("recipes", {
     .notNull()
     .unique()
     .references(() => products.id, { onDelete: "cascade" }),
-  note: varchar("note", { length: 255 }),
+  note: varchar("note", { length: 500 }),
+  portion: varchar("portion", { length: 100 }),
   costLocked: boolean("cost_locked").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

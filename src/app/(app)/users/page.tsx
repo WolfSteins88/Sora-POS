@@ -1,100 +1,150 @@
 import Link from "next/link";
 import { desc } from "drizzle-orm";
-import { deleteUser, resetUserPassword, saveUser } from "@/app/actions/ops";
-import { Card, Field, PageHeader, PrimaryButton, dangerActionClass, editActionClass, neutralActionClass, inputClass } from "@/components/ui";
+import { Clock, Plus, Shield, UserCheck, Users } from "lucide-react";
 import { getDb } from "@/lib/db";
 import { users } from "@/lib/schema";
+import type { Role } from "@/lib/rbac";
+import { UserCatalog } from "./UserCatalog";
+import { UserDetail } from "./UserDetail";
+
+const PAGE_SIZE = 8;
+const ROLE_LABEL = { ADMIN: "admin", MANAGER: "manajer", CASHIER: "kasir" } as const;
+
+function share(count: number, total: number) {
+  if (total <= 0) return "0% dari total";
+  return `${Math.round((count / total) * 100)}% dari total`;
+}
 
 export default async function UsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string }>;
+  searchParams: Promise<{ q?: string; role?: string; status?: string; page?: string; id?: string; new?: string }>;
 }) {
-  const { edit } = await searchParams;
+  const params = await searchParams;
   const rows = await getDb().select().from(users).orderBy(desc(users.createdAt));
-  const current = rows.find((row) => row.id === edit);
+  const people = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    username: row.username,
+    email: row.email,
+    phone: row.phone,
+    role: row.role as Role,
+    active: row.isActive,
+    image: row.image,
+    lastLogin: row.lastLogin ? row.lastLogin.toISOString() : null,
+  }));
+  const totalCount = people.length;
+  const activeCount = people.filter((row) => row.active).length;
+  const inactiveCount = totalCount - activeCount;
+  const adminCount = people.filter((row) => row.role === "ADMIN").length;
+  const q = params.q?.trim().toLowerCase() ?? "";
+  const role = params.role === "ADMIN" || params.role === "MANAGER" || params.role === "CASHIER" ? params.role : "";
+  const status = params.status === "active" || params.status === "inactive" ? params.status : "";
+  const filtered = people.filter((row) => {
+    if (q) {
+      const haystack = `${row.name} ${row.email ?? ""} ${row.username} ${ROLE_LABEL[row.role]}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    if (role && row.role !== role) return false;
+    if (status === "active" && !row.active) return false;
+    if (status === "inactive" && row.active) return false;
+    return true;
+  });
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const page = Math.min(Math.max(1, Number(params.page) || 1), pages);
+  const startIndex = (page - 1) * PAGE_SIZE;
+  const creating = params.new === "1";
+  const current = creating ? null : people.find((row) => row.id === params.id) ?? null;
+  const query = {
+    q: params.q?.trim() ?? "",
+    role,
+    status,
+    page: String(page),
+    id: current?.id ?? "",
+    fresh: creating ? "1" : "",
+  };
+  const back = new URLSearchParams();
+  if (query.q) back.set("q", query.q);
+  if (query.role) back.set("role", query.role);
+  if (query.status) back.set("status", query.status);
+  if (query.page !== "1") back.set("page", query.page);
+  const cancelHref = back.size ? `/users?${back.toString()}` : "/users";
+
   return (
     <div>
-      <PageHeader title="Pengguna" description="RBAC ADMIN / MANAGER / CASHIER." />
-      <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
-        <Card>
-          <h2 className="mb-3 font-semibold">{current ? "Ubah pengguna" : "Tambah"}</h2>
-          <form action={saveUser} className="space-y-3" key={current?.id ?? "new"}>
-            {current ? <input type="hidden" name="id" value={current.id} /> : null}
-            <Field label="Nama">
-              <input name="name" required defaultValue={current?.name} key={current?.id ?? "new"} className={inputClass} />
-            </Field>
-            <Field label="Username">
-              <input name="username" required defaultValue={current?.username} className={inputClass} />
-            </Field>
-            <Field label="Email">
-              <input name="email" type="email" defaultValue={current?.email ?? ""} className={inputClass} />
-            </Field>
-            <Field label="Password" hint={current ? "Kosongkan jika tidak diganti." : undefined}>
-              <input name="password" type="password" required={!current} className={inputClass} />
-            </Field>
-            <Field label="Peran">
-              <select name="role" className={inputClass} defaultValue={current?.role ?? "CASHIER"}>
-                <option value="CASHIER">Kasir</option>
-                <option value="MANAGER">Manajer</option>
-                <option value="ADMIN">Admin</option>
-              </select>
-            </Field>
-            <Field label="Status">
-              <select name="isActive" className={inputClass} defaultValue={current?.isActive === false ? "0" : "1"}>
-                <option value="1">Aktif</option>
-                <option value="0">Nonaktif</option>
-              </select>
-            </Field>
-            <div className="flex gap-2">
-              <PrimaryButton type="submit">{current ? "Simpan" : "Tambah"}</PrimaryButton>
-              {current ? (
-                <Link href="/users" className="btn inline-flex items-center rounded-lg border border-line px-4 text-sm">
-                  Batal
-                </Link>
-              ) : null}
+      <div className="mt-1 mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Pengguna</h1>
+          <p className="mt-1 text-sm text-muted">Kelola akses pengguna, peran, dan izin sistem dengan mudah.</p>
+        </div>
+        <Link href="/users?new=1" className="btn inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-white">
+          <Plus size={16} aria-hidden />
+          Tambah Pengguna
+        </Link>
+      </div>
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi icon={Users} label="Total Pengguna" value={String(totalCount)} hint="akun terdaftar" tone="bg-chip text-ink" />
+        <Kpi icon={UserCheck} label="Aktif" value={String(activeCount)} hint={share(activeCount, totalCount)} tone="bg-ok-soft text-ok" />
+        <Kpi icon={Clock} label="Nonaktif" value={String(inactiveCount)} hint={share(inactiveCount, totalCount)} tone="bg-warn-soft text-warn" />
+        <Kpi icon={Shield} label="Admin" value={String(adminCount)} hint={share(adminCount, totalCount)} tone="bg-accent-soft text-accent" />
+      </div>
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <UserCatalog
+          query={query}
+          rows={filtered.slice(startIndex, startIndex + PAGE_SIZE).map((row, index) => ({
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            role: row.role,
+            active: row.active,
+            image: row.image,
+            lastLogin: row.lastLogin,
+            number: startIndex + index + 1,
+          }))}
+          total={filtered.length}
+          page={page}
+          pages={pages}
+          start={filtered.length === 0 ? 0 : startIndex + 1}
+          end={Math.min(startIndex + PAGE_SIZE, filtered.length)}
+        />
+        <aside className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+          {creating || current ? (
+            <UserDetail key={current?.id ?? "new"} user={current} cancelHref={cancelHref} />
+          ) : (
+            <div>
+              <h2 className="font-semibold">Detail Pengguna</h2>
+              <p className="mt-3 text-sm text-muted">Pilih pengguna untuk melihat peran dan hak aksesnya.</p>
             </div>
-          </form>
-        </Card>
-        <Card>
-          <table className="w-full text-sm">
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-t border-line">
-                  <td className="py-2">
-                    {row.name}
-                    <div className="text-xs text-muted">
-                      {row.username} · {row.role}
-                      {row.email ? ` · ${row.email}` : ""}
-                    </div>
-                  </td>
-                  <td>{row.isActive ? "aktif" : "nonaktif"}</td>
-                  <td className="text-right">
-                    <div className="flex flex-row items-center justify-end gap-2">
-                      <Link href={`/users?edit=${row.id}`} className={editActionClass}>
-                        Ubah
-                      </Link>
-                      <form action={resetUserPassword} className="inline">
-                        <input type="hidden" name="id" value={row.id} />
-                        <input type="hidden" name="password" value="password123" />
-                        <button type="submit" className={neutralActionClass}>
-                          Reset
-                        </button>
-                      </form>
-                      <form action={deleteUser} className="inline">
-                        <input type="hidden" name="id" value={row.id} />
-                        <button type="submit" className={dangerActionClass}>
-                          Hapus
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+          )}
+        </aside>
       </div>
     </div>
+  );
+}
+
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  icon: typeof Users;
+  label: string;
+  value: string;
+  hint: string;
+  tone: string;
+}) {
+  return (
+    <article className="flex h-full min-h-36 flex-col rounded-2xl border border-line bg-surface p-4 shadow-card">
+      <span className={`inline-flex size-10 items-center justify-center rounded-xl ${tone}`}>
+        <Icon size={18} aria-hidden />
+      </span>
+      <p className="mt-3 text-sm text-muted">{label}</p>
+      <p className="text-2xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-auto pt-1 text-xs text-muted">{hint}</p>
+    </article>
   );
 }

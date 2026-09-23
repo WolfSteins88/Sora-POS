@@ -7,6 +7,7 @@ export type ProductQuery = {
   page?: string;
   id?: string;
   edit?: string;
+  kind?: string;
 };
 
 export function productHref(current: ProductQuery, patch: Partial<ProductQuery> = {}) {

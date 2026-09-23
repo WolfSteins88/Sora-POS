@@ -132,7 +132,7 @@ export default async function ProductsPage({
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Link
-            href={productHref(query, { edit: "new", id: "" })}
+            href={productHref(query, { edit: "new", id: "", kind: "" })}
             className="inline-flex h-10 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-white"
           >
             <Plus size={14} aria-hidden />
@@ -191,7 +191,8 @@ export default async function ProductsPage({
               categories={categories.map((item) => ({ id: item.id, name: item.name }))}
               pack={pack}
               desk
-              closeHref={productHref(query, { edit: "" })}
+              closeHref={productHref(query, { edit: "", kind: "" })}
+              defaultKind={params.kind === "recipe" ? "recipe" : "goods"}
               product={
                 editorProduct
                   ? {
