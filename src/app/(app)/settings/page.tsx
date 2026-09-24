@@ -21,6 +21,7 @@ import { ImageField } from "@/components/ImageField";
 import { Card, Field, PageHeader, PrimaryButton, ghostButtonClass, inputClass } from "@/components/ui";
 import { getSettingsMap } from "@/lib/settings";
 import { defaultAccent, normalizeShopMode, parseAccentColor } from "@/lib/theme";
+import { DeleteDataButton } from "./DeleteDataButton";
 import { ImportBackupForm } from "./ImportBackupForm";
 import { ModeCards } from "./ModeCards";
 
@@ -74,7 +75,7 @@ function IconField({
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; imported?: string }>;
+  searchParams: Promise<{ saved?: string; imported?: string; purged?: string; purgeError?: string }>;
 }) {
   const s = await getSettingsMap();
   const params = await searchParams;
@@ -92,6 +93,12 @@ export default async function SettingsPage({
         <p className="mb-4 rounded-xl bg-ok-soft px-3 py-2 text-sm text-ok">
           Data cadangan berhasil diimpor. Katalog, shift, dan transaksi sudah diganti.
         </p>
+      ) : null}
+      {params.purged ? (
+        <p className="mb-4 rounded-xl bg-ok-soft px-3 py-2 text-sm text-ok">Data dihapus: {params.purged}.</p>
+      ) : null}
+      {params.purgeError ? (
+        <p className="mb-4 rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{params.purgeError}</p>
       ) : null}
 
       <form action={saveSettings} className="grid items-start gap-6 xl:grid-cols-2">
@@ -127,6 +134,7 @@ export default async function SettingsPage({
               </a>
             </div>
             <ImportBackupForm />
+            <DeleteDataButton />
             <p className="mt-4 rounded-xl bg-chip px-3 py-3 text-xs leading-5 text-muted">
               Data cadangan meliputi produk, kategori, resep, transaksi, pengguna, dan pengaturan. Akun login tidak diubah.
               Disarankan untuk melakukan backup secara berkala.

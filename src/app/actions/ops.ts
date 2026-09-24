@@ -5,7 +5,7 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { count, eq } from "drizzle-orm";
+import { count, eq, ne } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { requireSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
@@ -33,6 +33,7 @@ import {
   recipes,
   settings,
   shifts,
+  transactionCounters,
   transactions,
   users,
 } from "@/lib/schema";
@@ -806,6 +807,78 @@ export async function importBackup(formData: FormData) {
   revalidatePath("/transactions");
   revalidatePath("/reports");
   redirect("/settings?imported=1");
+}
+
+const PURGE_GROUPS = [
+  ["transactions", "Transaksi"],
+  ["shifts", "Shift"],
+  ["recipes", "Resep"],
+  ["products", "Produk"],
+  ["categories", "Kategori"],
+  ["inventory", "Bahan baku"],
+  ["users", "Pengguna lain"],
+  ["printers", "Printer"],
+] as const;
+
+export async function purgeShopData(formData: FormData) {
+  const session = await requireSession();
+  guard(session.role, "settings");
+  const picked = new Set(PURGE_GROUPS.map(([key]) => key).filter((key) => formData.get(key) === "on"));
+  if (picked.size === 0) {
+    redirect("/settings?purgeError=" + encodeURIComponent("Pilih data yang akan dihapus."));
+  }
+  const db = getDb();
+  async function hasRows(table: typeof transactions | typeof recipes | typeof products | typeof shifts) {
+    const [row] = await db.select({ n: count() }).from(table);
+    return Number(row?.n ?? 0) > 0;
+  }
+  if (picked.has("products") && !picked.has("transactions") && (await hasRows(transactions))) {
+    redirect("/settings?purgeError=" + encodeURIComponent("Hapus transaksi dulu sebelum menghapus produk."));
+  }
+  if (picked.has("products") && !picked.has("recipes") && (await hasRows(recipes))) {
+    redirect("/settings?purgeError=" + encodeURIComponent("Hapus resep dulu sebelum menghapus produk."));
+  }
+  if (picked.has("categories") && !picked.has("products") && (await hasRows(products))) {
+    redirect("/settings?purgeError=" + encodeURIComponent("Hapus produk dulu sebelum menghapus kategori."));
+  }
+  if (picked.has("inventory") && !picked.has("recipes") && (await hasRows(recipes))) {
+    redirect("/settings?purgeError=" + encodeURIComponent("Hapus resep dulu sebelum menghapus bahan baku."));
+  }
+  if (picked.has("shifts") && !picked.has("transactions") && (await hasRows(transactions))) {
+    redirect("/settings?purgeError=" + encodeURIComponent("Hapus transaksi dulu sebelum menghapus shift."));
+  }
+  if (
+    picked.has("users") &&
+    ((!picked.has("transactions") && (await hasRows(transactions))) || (!picked.has("shifts") && (await hasRows(shifts))))
+  ) {
+    redirect("/settings?purgeError=" + encodeURIComponent("Hapus transaksi dan shift dulu sebelum menghapus pengguna lain."));
+  }
+
+  if (picked.has("transactions")) {
+    await db.delete(transactions);
+    await db.delete(heldOrders);
+    await db.delete(transactionCounters);
+  }
+  if (picked.has("shifts")) await db.delete(shifts);
+  if (picked.has("recipes")) await db.delete(recipes);
+  if (picked.has("products")) {
+    await db.delete(products);
+    await db.delete(addons);
+  }
+  if (picked.has("categories")) await db.delete(categories);
+  if (picked.has("inventory")) await db.delete(inventoryItems);
+  if (picked.has("users")) {
+    await db.update(inventoryMovements).set({ userId: null }).where(ne(inventoryMovements.userId, session.id));
+    await db.delete(users).where(ne(users.id, session.id));
+  }
+  if (picked.has("printers")) await db.delete(printers);
+
+  revalidatePath("/", "layout");
+  for (const path of ["/settings", "/dashboard", "/pos", "/products", "/categories", "/inventory", "/recipes", "/shifts", "/transactions", "/reports", "/users", "/printer"]) {
+    revalidatePath(path);
+  }
+  const labels = PURGE_GROUPS.filter(([key]) => picked.has(key)).map(([, label]) => label);
+  redirect("/settings?purged=" + encodeURIComponent(labels.join(", ")));
 }
 
 export async function savePrinter(formData: FormData) {
