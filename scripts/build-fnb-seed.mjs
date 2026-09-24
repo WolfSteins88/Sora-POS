@@ -56,18 +56,18 @@ const cats = [
 const cat = Object.fromEntries(cats.map((c) => [c.name, c.id]));
 
 const productsMeta = [
-  { key: "iced", name: "Iced Latte", sku: "CF-001", cat: "Coffee", kind: "recipe", price: 28000, cost: 12000, featured: true, sort: 1, stock: 0 },
-  { key: "cap", name: "Cappuccino", sku: "CF-002", cat: "Coffee", kind: "recipe", price: 27000, cost: 11500, featured: false, sort: 2, stock: 0 },
-  { key: "ame", name: "Americano", sku: "CF-003", cat: "Coffee", kind: "recipe", price: 25000, cost: 9000, featured: false, sort: 3, stock: 0 },
-  { key: "esp", name: "Espresso", sku: "CF-004", cat: "Coffee", kind: "goods", price: 20000, cost: 7000, featured: false, sort: 4, stock: 400 },
-  { key: "choc", name: "Chocolate Milk", sku: "NC-001", cat: "Non Coffee", kind: "goods", price: 26000, cost: 10000, featured: false, sort: 1, stock: 300 },
-  { key: "matcha", name: "Matcha Latte", sku: "NC-002", cat: "Non Coffee", kind: "recipe", price: 29000, cost: 12000, featured: false, sort: 2, stock: 0 },
-  { key: "lemon", name: "Lemon Tea", sku: "TH-001", cat: "Tea", kind: "recipe", price: 22000, cost: 7000, featured: false, sort: 1, stock: 0 },
-  { key: "thai", name: "Thai Tea", sku: "TH-002", cat: "Tea", kind: "goods", price: 24000, cost: 8500, featured: false, sort: 2, stock: 280 },
-  { key: "sand", name: "Chicken Sandwich", sku: "FD-001", cat: "Food", kind: "goods", price: 32000, cost: 15000, featured: false, sort: 1, stock: 220 },
-  { key: "burg", name: "Beef Burger", sku: "FD-002", cat: "Food", kind: "goods", price: 38000, cost: 18000, featured: false, sort: 2, stock: 200 },
-  { key: "crois", name: "Croissant", sku: "SN-001", cat: "Snack", kind: "goods", price: 18000, cost: 7000, featured: false, sort: 1, stock: 250 },
-  { key: "banana", name: "Banana Cake", sku: "SN-002", cat: "Snack", kind: "goods", price: 16000, cost: 6000, featured: false, sort: 2, stock: 180 },
+  { key: "iced", name: "Iced Latte", sku: "CF-001", cat: "Coffee", kind: "recipe", price: 32000, cost: 12000, featured: true, sort: 1, stock: 0 },
+  { key: "cap", name: "Cappuccino", sku: "CF-002", cat: "Coffee", kind: "recipe", price: 30000, cost: 11000, featured: false, sort: 2, stock: 0 },
+  { key: "ame", name: "Americano", sku: "CF-003", cat: "Coffee", kind: "recipe", price: 26000, cost: 9000, featured: false, sort: 3, stock: 0 },
+  { key: "esp", name: "Espresso", sku: "CF-004", cat: "Coffee", kind: "goods", price: 18000, cost: 7000, featured: false, sort: 4, stock: 60 },
+  { key: "choc", name: "Chocolate Milk", sku: "NC-001", cat: "Non Coffee", kind: "goods", price: 28000, cost: 10000, featured: false, sort: 1, stock: 40 },
+  { key: "matcha", name: "Matcha Latte", sku: "NC-002", cat: "Non Coffee", kind: "recipe", price: 35000, cost: 14000, featured: false, sort: 2, stock: 0 },
+  { key: "lemon", name: "Lemon Tea", sku: "TH-001", cat: "Tea", kind: "recipe", price: 24000, cost: 9000, featured: false, sort: 1, stock: 0 },
+  { key: "thai", name: "Thai Tea", sku: "TH-002", cat: "Tea", kind: "goods", price: 26000, cost: 10000, featured: false, sort: 2, stock: 36 },
+  { key: "sand", name: "Chicken Sandwich", sku: "FD-001", cat: "Food", kind: "goods", price: 45000, cost: 18000, featured: false, sort: 1, stock: 18 },
+  { key: "burg", name: "Beef Burger", sku: "FD-002", cat: "Food", kind: "goods", price: 58000, cost: 24000, featured: false, sort: 2, stock: 14 },
+  { key: "crois", name: "Croissant", sku: "SN-001", cat: "Snack", kind: "goods", price: 24000, cost: 9000, featured: false, sort: 1, stock: 22 },
+  { key: "banana", name: "Banana Cake", sku: "SN-002", cat: "Snack", kind: "goods", price: 22000, cost: 8000, featured: false, sort: 2, stock: 16 },
 ];
 
 const products = productsMeta.map((p) => ({
@@ -171,14 +171,14 @@ const product_variants = variantBundles.map((v) => v.variant);
 const product_variant_options = variantBundles.flatMap((v) => v.options);
 
 const invMeta = [
-  { key: "bean", name: "Coffee Bean", sku: "COF-ING-001", unit: "g", stock: 80000, min: 500, cost: 250 },
-  { key: "milk", name: "Fresh Milk", sku: "COF-ING-002", unit: "ml", stock: 200000, min: 1000, cost: 15 },
-  { key: "ice", name: "Ice Cube", sku: "COF-ING-003", unit: "g", stock: 200000, min: 2000, cost: 2 },
-  { key: "cup", name: "Cup 12oz", sku: "COF-ING-004", unit: "pcs", stock: 5000, min: 50, cost: 800 },
-  { key: "matchaP", name: "Matcha Powder", sku: "COF-ING-005", unit: "g", stock: 8000, min: 100, cost: 400 },
-  { key: "chocS", name: "Chocolate Syrup", sku: "COF-ING-006", unit: "ml", stock: 20000, min: 300, cost: 90 },
-  { key: "tea", name: "Tea Leaves", sku: "COF-ING-007", unit: "g", stock: 10000, min: 200, cost: 150 },
-  { key: "syrup", name: "Sugar Syrup", sku: "COF-ING-008", unit: "ml", stock: 30000, min: 400, cost: 30 },
+  { key: "bean", name: "Coffee Bean", sku: "COF-ING-001", unit: "g", stock: 4500, min: 1000, cost: 180 },
+  { key: "milk", name: "Fresh Milk", sku: "COF-ING-002", unit: "ml", stock: 12000, min: 2000, cost: 20 },
+  { key: "ice", name: "Ice Cube", sku: "COF-ING-003", unit: "g", stock: 8000, min: 2000, cost: 3 },
+  { key: "cup", name: "Cup 12oz", sku: "COF-ING-004", unit: "pcs", stock: 350, min: 80, cost: 550 },
+  { key: "matchaP", name: "Matcha Powder", sku: "COF-ING-005", unit: "g", stock: 400, min: 80, cost: 220 },
+  { key: "chocS", name: "Chocolate Syrup", sku: "COF-ING-006", unit: "ml", stock: 1800, min: 400, cost: 28 },
+  { key: "tea", name: "Tea Leaves", sku: "COF-ING-007", unit: "g", stock: 600, min: 150, cost: 90 },
+  { key: "syrup", name: "Sugar Syrup", sku: "COF-ING-008", unit: "ml", stock: 2500, min: 500, cost: 10 },
 ];
 const inventory_items = invMeta.map((i) => ({
   id: id(`inv-${i.key}`),
@@ -459,15 +459,14 @@ for (let d = 1; d <= 22; d++) {
 for (const p of products) {
   const meta = productsMeta.find((m) => prod[m.key] === p.id);
   if (meta?.kind === "goods") {
-    const left = goodsStock[meta.key];
-    p.current_stock = String(Math.max(0, left));
-    p.stock_status = left <= 0 ? "sold_out" : "available";
+    p.current_stock = String(meta.stock);
+    p.stock_status = meta.stock <= 0 ? "sold_out" : "available";
   }
 }
 for (const item of inventory_items) {
   const meta = invMeta.find((m) => inv[m.key] === item.id);
   if (!meta) continue;
-  item.current_stock = String(Math.max(0, invStock[meta.key]));
+  item.current_stock = String(meta.stock);
 }
 
 const dump = {

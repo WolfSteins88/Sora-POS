@@ -67,7 +67,7 @@ export function InventoryEditor({ item, lastStockAt }: { item: Item | null; last
       </p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="mt-1 text-sm text-muted">
-        {item ? "Perbarui informasi bahan baku. Stok diubah lewat Sesuaikan Stok." : "Masukkan informasi bahan baku untuk menambah stok ke sistem."}
+        {item ? "Perbarui informasi bahan baku, termasuk stok saat ini." : "Masukkan informasi bahan baku untuk menambah stok ke sistem."}
       </p>
 
       <form action={saveInventoryItem} className="mt-5 grid items-start gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
@@ -154,13 +154,9 @@ export function InventoryEditor({ item, lastStockAt }: { item: Item | null; last
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <label className="block text-sm">
                 <span className="font-medium">Stok Saat Ini</span>
-                {item ? (
-                  <input className={`${inputClass} mt-1.5 bg-chip`} value={stockText(item.stock)} readOnly />
-                ) : (
-                  <span className="mt-1.5 block">
-                    <IdNumberInput name="currentStock" defaultValue={0} onValueChange={setStock} />
-                  </span>
-                )}
+                <span className="mt-1.5 block">
+                  <IdNumberInput name="currentStock" defaultValue={item?.stock ?? 0} onValueChange={setStock} />
+                </span>
               </label>
               <label className="block text-sm">
                 <span className="font-medium">Stok Minimum</span>

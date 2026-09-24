@@ -301,8 +301,23 @@ export async function saveInventoryItem(formData: FormData) {
     const [existing] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
     if (!existing) throw new Error("Bahan tidak ditemukan.");
     const image = await saveUpload(imageFile, "inventory", existing.image);
-    const { currentStock: _stock, sku: _sku, ...rest } = values;
-    await db.update(inventoryItems).set({ ...rest, sku: existing.sku, image }).where(eq(inventoryItems.id, id));
+    const nextStock = num(formData, "currentStock");
+    if (nextStock < 0) throw new Error("Stok tidak boleh negatif.");
+    const before = Number(existing.currentStock);
+    const { sku: _sku, ...rest } = values;
+    await db.update(inventoryItems).set({ ...rest, currentStock: String(nextStock), sku: existing.sku, image }).where(eq(inventoryItems.id, id));
+    if (Math.abs(nextStock - before) > 0.0005) {
+      await db.insert(inventoryMovements).values({
+        inventoryItemId: id,
+        type: "adjustment",
+        quantity: String(nextStock - before),
+        stockBefore: String(before),
+        stockAfter: String(nextStock),
+        reference: "manual",
+        note: "Diubah dari form bahan",
+        userId: session.id,
+      });
+    }
     await writeUnlockedRecipeCosts({ inventoryItemId: id });
   } else {
     if (!values.sku) {
