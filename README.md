@@ -63,6 +63,7 @@ Skrip setup: `npm run db:setup` (buat database, terapkan migrasi, seed akun dan 
 ### Inventori dan resep (F&B)
 
 - Bahan baku, SKU otomatis `ING-`, satuan (g, kg, ml, liter, pcs), harga pokok, mutasi stok.
+- Stok saat ini dan stok minimum bisa diubah dari form. Angka diketik dengan pemisah ribuan (`1.000`). Perubahan stok tercatat sebagai mutasi penyesuaian.
 - Resep (BOM) per racikan; HPP bisa dikunci agar tidak tertimpa hitungan otomatis.
 - Menu Resep dan Inventori disembunyikan di mode retail.
 
@@ -80,22 +81,28 @@ Skrip setup: `npm run db:setup` (buat database, terapkan migrasi, seed akun dan 
 
 ### Laporan
 
-Jenis: penjualan, produk, kategori, pembayaran, kasir, shift, stok. Filter tanggal (hari ini, kemarin, minggu ini, bulan ini, rentang kustom). Ekspor.
+Tab: Ringkasan, Penjualan, Produk, Kasir, Pembayaran, Pajak & Biaya, Shift, Stok. Filter tanggal (hari ini, kemarin, minggu ini, bulan ini, rentang kustom), kasir, dan metode bayar.
+
+Penjualan, Produk, Pajak & Biaya, Shift, dan Stok menampilkan 10 baris per halaman (Sebelumnya / Berikutnya). Ganti tab atau filter kembali ke halaman 1. Ekspor tetap mengunduh seluruh periode, bukan hanya halaman yang terbuka.
 
 ### Pengguna dan pengaturan
 
 - Pengguna: nama, username, email, peran, status, reset password.
 - Identitas toko: nama, logo, alamat, telepon, email, footer struk, mata uang.
-- Pajak %, service %, ukuran kertas struk, stok negatif.
+- Pajak %, service %, ukuran kertas struk, stok negatif. Persen memakai format angka Indonesia.
 - Mode toko F&B / retail (katalog kasir dan menu berubah, data tidak dihapus).
-- Warna aksen (palet default: F&B cokelat, retail biru).
-- Cadangan: unduh dump JSON tabel toko.
+- Warna aksen: Cokelat, Krem, Hijau, Biru, Ungu. Default F&B cokelat, retail biru.
+- Cadangan: unduh dump JSON tabel toko, atau unduh contoh demo F&B dan retail.
+- Impor JSON menimpa katalog, stok, shift, dan transaksi. Akun login tidak diubah. Impor minta centang konfirmasi.
+- Hapus data: pilih grup dengan centang, lalu hapus permanen. Kotak mulai kosong. Pengaturan toko, logo, dan mode tidak ikut. Grup: transaksi (pembayaran, pesanan ditahan, nomor struk), shift, produk (varian dan add-on), kategori, bahan baku (riwayat stok), resep, pengguna lain (akun yang sedang login tetap), printer.
+- Hapus ditolak, tanpa menghapus data lain, jika urutannya salah: produk butuh transaksi dan resep kosong dulu, kategori butuh produk kosong dulu, bahan baku butuh resep kosong dulu, shift butuh transaksi kosong dulu, pengguna lain butuh transaksi dan shift kosong dulu.
 
 ### Lainnya
 
 - Format angka dan uang Indonesia (titik ribuan, koma desimal).
-- Menu desktop pill + drawer hamburger.
+- Menu desktop pill + drawer hamburger. Keluar akun minta konfirmasi.
 - Satu toko, tanpa multi-cabang.
+- Contoh data demo dibuat ulang dengan `npm run seed:fnb-json` dan `npm run seed:retail-json` (berkas di `seeds/`). Database yang sudah jalan tidak berubah sampai berkas itu diimpor dari Pengaturan.
 
 ## Cara menjalankan
 
