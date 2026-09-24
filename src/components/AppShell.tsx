@@ -129,7 +129,7 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
           <button
             id="menuToggleBtn"
             type="button"
-            className={`menu-toggle icon-btn inline-flex items-center justify-center rounded-full border border-line ${open ? "is-open" : ""}`}
+            className={`menu-toggle pressable icon-btn inline-flex items-center justify-center rounded-full border border-line ${open ? "is-open" : ""}`}
             aria-label={open ? "Tutup menu" : "Buka menu"}
             aria-expanded={open}
             aria-controls="appDrawer"
@@ -154,7 +154,7 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
             <Link
               key={`pill-${item.href}`}
               href={item.href}
-              className={`inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-sm transition duration-ui ${
+              className={`pressable inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-sm ${
                 isActive(item.href) ? "bg-accent font-semibold text-white" : "font-medium text-ink hover:bg-accent-soft"
               }`}
             >
@@ -174,7 +174,7 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
                   href={item.href}
                   aria-label={item.label}
                   title={item.label}
-                  className={`icon-btn inline-flex items-center justify-center rounded-full border transition duration-ui ${
+                  className={`pressable icon-btn inline-flex items-center justify-center rounded-full border ${
                     active ? "border-accent bg-accent text-white" : "border-line bg-white/80 text-ink hover:bg-accent-soft"
                   }`}
                 >
@@ -189,7 +189,7 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
               aria-expanded={accountOpen}
               aria-haspopup="dialog"
               onClick={() => setAccountOpen((value) => !value)}
-              className="flex min-w-0 items-center gap-2 rounded-full border border-line bg-white/80 py-1 pr-3 pl-1 text-left transition duration-ui hover:bg-accent-soft"
+              className="pressable flex min-w-0 items-center gap-2 rounded-full border border-line bg-white/80 py-1 pr-3 pl-1 text-left hover:bg-accent-soft"
             >
               <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-white">
                 {initial}
@@ -200,7 +200,7 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
               </span>
             </button>
             {accountOpen ? (
-              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-[120] w-60 rounded-2xl border border-line bg-white p-3 shadow-card">
+              <div className="menu-pop absolute right-0 top-[calc(100%+0.5rem)] z-[120] w-60 rounded-2xl border border-line bg-white p-3 shadow-card">
                 <p className="truncate text-sm font-semibold">{user.name}</p>
                 <p className="mt-0.5 text-xs text-muted">{ROLE_LABEL[user.role]}</p>
                 <button type="button" className={`${ghostButtonClass} mt-3 h-11 w-full`} onClick={askLogout}>
@@ -239,7 +239,7 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
                 key={`side-${item.href}`}
                 href={item.href}
                 onClick={closeNav}
-                className={`flex min-h-12 items-center gap-3 rounded-2xl px-3.5 text-base transition duration-ui ${
+                className={`pressable flex min-h-12 items-center gap-3 rounded-2xl px-3.5 text-base ${
                   active ? "bg-white/20 font-semibold text-white" : "text-[color:var(--sidebar-muted)] hover:bg-white/10"
                 }`}
               >
@@ -257,8 +257,8 @@ export function AppShell({ user, shopName, shopMode, children }: Props) {
       </aside>
 
       {confirmLogout ? (
-        <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-ink/40 p-4" role="dialog" aria-modal="true" aria-labelledby="logout-title">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-card">
+        <div className="dialog-overlay fixed inset-0 z-[1400] flex items-center justify-center bg-ink/40 p-4" role="dialog" aria-modal="true" aria-labelledby="logout-title">
+          <div className="dialog-pop w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-card">
             <p id="logout-title" className="text-base font-semibold">Ingin keluar dari akun?</p>
             <p className="mt-1 text-sm text-muted">{user.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-2">

@@ -457,7 +457,7 @@ export function PosClient({
                   disabled={sold}
                   aria-label={`Tambah ${p.name}`}
                   onClick={() => (p.kind === "goods" ? addGoods(p) : openRecipe(p))}
-                  className={`overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-card disabled:opacity-40 ${
+                  className={`pressable overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-card disabled:opacity-40 ${
                     view === "list" ? "flex items-center gap-3 p-2" : "flex h-full flex-col"
                   }`}
                 >

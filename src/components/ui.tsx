@@ -93,10 +93,10 @@ export const compactInputClass =
   "rounded-xl border border-line bg-white px-2.5 py-1.5 text-sm outline-none transition duration-ui focus:border-accent focus:ring-2 focus:ring-accent/25";
 
 export const ghostButtonClass =
-  "btn inline-flex items-center justify-center rounded-xl border border-accent px-4 text-sm font-medium text-accent transition duration-ui hover:bg-accent-soft active:scale-[0.98] disabled:opacity-50";
+  "btn pressable inline-flex items-center justify-center rounded-xl border border-accent px-4 text-sm font-medium text-accent hover:bg-accent-soft disabled:opacity-50";
 
 const rowActionClass =
-  "inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium transition-all duration-200 active:scale-95";
+  "pressable inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium";
 
 export const editActionClass = `${rowActionClass} border border-accent/30 bg-accent-soft text-accent hover:bg-accent/15`;
 
@@ -118,7 +118,7 @@ export function PrimaryButton({
   return (
     <button
       {...props}
-      className={`btn inline-flex items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white transition duration-ui hover:brightness-110 active:scale-[0.98] disabled:opacity-50 ${props.className ?? ""}`}
+      className={`btn pressable inline-flex items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50 ${props.className ?? ""}`}
     >
       {children}
     </button>

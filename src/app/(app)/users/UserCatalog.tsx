@@ -282,7 +282,7 @@ function RowMenu({ id, name }: { id: string; name: string }) {
       <summary className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full bg-white hover:bg-chip [&::-webkit-details-marker]:hidden" aria-label={`Aksi ${name}`}>
         <MoreHorizontal size={16} />
       </summary>
-      <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-line bg-white p-1 shadow-card">
+      <div className="menu-pop absolute right-0 z-20 mt-1 w-40 rounded-xl border border-line bg-white p-1 shadow-card">
         <form action={resetUserPassword}>
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="password" value="password123" />

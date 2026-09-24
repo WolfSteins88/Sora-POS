@@ -46,6 +46,7 @@ const PAYMENT_TONE: Record<string, string> = {
 
 const PILL_TONE = ["bg-accent-soft text-accent", "bg-ok-soft text-ok", "bg-warn-soft text-warn", "bg-chip text-ink"];
 const CARD = "rounded-2xl border border-line bg-surface p-5 shadow-card";
+const PAGE_SIZE = 10;
 
 function isTab(value: string | undefined): value is Tab {
   return TABS.some(([key]) => key === value);
@@ -60,6 +61,33 @@ function href(query: { from: string; to: string; cashier: string; method: string
   if (query.method) params.set("method", query.method);
   const text = params.toString();
   return text ? `/reports?${text}` : "/reports";
+}
+
+function pageHref(query: { from: string; to: string; cashier: string; method: string }, tab: Tab, page: number) {
+  const params = new URLSearchParams();
+  if (tab !== "ringkasan") params.set("tab", tab);
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  if (query.cashier) params.set("cashier", query.cashier);
+  if (query.method) params.set("method", query.method);
+  if (page > 1) params.set("page", String(page));
+  const text = params.toString();
+  return text ? `/reports?${text}` : "/reports";
+}
+
+function pageCount(total: number) {
+  return Math.max(1, Math.ceil(total / PAGE_SIZE));
+}
+
+function clampPage(raw: string | undefined, total: number) {
+  const parsed = Number(raw);
+  const requested = Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1;
+  return Math.min(requested, pageCount(total));
+}
+
+function pageSlice<T>(rows: T[], page: number) {
+  const start = (page - 1) * PAGE_SIZE;
+  return rows.slice(start, start + PAGE_SIZE);
 }
 
 function longDate(iso: string) {
@@ -130,7 +158,7 @@ function Empty({ text }: { text: string }) {
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; from?: string; to?: string; cashier?: string; method?: string }>;
+  searchParams: Promise<{ tab?: string; from?: string; to?: string; cashier?: string; method?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const tab: Tab = isTab(params.tab) ? params.tab : "ringkasan";
@@ -141,6 +169,24 @@ export default async function ReportsPage({
     method: params.method,
   });
   const query = { from: desk.from, to: desk.to, cashier: desk.cashierId, method: desk.method };
+  const pagedTotal =
+    tab === "penjualan"
+      ? desk.sales.length
+      : tab === "produk"
+        ? desk.products.length
+        : tab === "pajak"
+          ? desk.tax.length
+          : tab === "shift"
+            ? desk.shifts.length
+            : tab === "stok"
+              ? desk.stock.length
+              : 0;
+  const page = clampPage(params.page, pagedTotal);
+  const salesPage = pageSlice(desk.sales, page);
+  const productsPage = pageSlice(desk.products, page);
+  const taxPage = pageSlice(desk.tax, page);
+  const shiftsPage = pageSlice(desk.shifts, page);
+  const stockPage = pageSlice(desk.stock, page);
   const paymentTotal = desk.payments.reduce((sum, row) => sum + row.total, 0);
   const exportParams = new URLSearchParams({ tab, from: desk.from, to: desk.to });
   if (desk.cashierId) exportParams.set("cashier", desk.cashierId);
@@ -282,10 +328,13 @@ export default async function ReportsPage({
           {desk.sales.length === 0 ? (
             <Empty text="Belum ada penjualan pada periode ini." />
           ) : (
-            <Table
-              columns={["Tanggal", "Jumlah Transaksi", "Total Penjualan"]}
-              rows={desk.sales.map((row) => [longDate(row.date), String(row.trx), money(row.total)])}
-            />
+            <>
+              <Table
+                columns={["Tanggal", "Jumlah Transaksi", "Total Penjualan"]}
+                rows={salesPage.map((row) => [longDate(row.date), String(row.trx), money(row.total)])}
+              />
+              <Pager query={query} tab="penjualan" page={page} total={desk.sales.length} />
+            </>
           )}
         </section>
       ) : null}
@@ -295,6 +344,7 @@ export default async function ReportsPage({
           {desk.products.length === 0 ? (
             <Empty text="Belum ada produk terjual pada periode ini." />
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[36rem] text-left text-sm">
                 <thead className="text-xs uppercase tracking-wide text-muted">
@@ -306,7 +356,7 @@ export default async function ReportsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {desk.products.map((row, index) => (
+                  {productsPage.map((row, index) => (
                     <tr key={row.id} className="border-t border-line">
                       <td className="py-2.5 pr-3">
                         <span className="inline-flex items-center gap-2 font-medium">
@@ -324,6 +374,8 @@ export default async function ReportsPage({
                 </tbody>
               </table>
             </div>
+            <Pager query={query} tab="produk" page={page} total={desk.products.length} />
+            </>
           )}
         </section>
       ) : null}
@@ -360,10 +412,13 @@ export default async function ReportsPage({
           {desk.tax.length === 0 ? (
             <Empty text="Belum ada pajak atau biaya pada periode ini." />
           ) : (
-            <Table
-              columns={["Tanggal", "Pajak", "Biaya Layanan", "Total"]}
-              rows={desk.tax.map((row) => [longDate(row.date), money(row.tax), money(row.service), money(row.tax + row.service)])}
-            />
+            <>
+              <Table
+                columns={["Tanggal", "Pajak", "Biaya Layanan", "Total"]}
+                rows={taxPage.map((row) => [longDate(row.date), money(row.tax), money(row.service), money(row.tax + row.service)])}
+              />
+              <Pager query={query} tab="pajak" page={page} total={desk.tax.length} />
+            </>
           )}
         </section>
       ) : null}
@@ -373,6 +428,7 @@ export default async function ReportsPage({
           {desk.shifts.length === 0 ? (
             <Empty text="Belum ada shift pada periode ini." />
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[48rem] text-left text-sm">
                 <thead className="text-xs uppercase tracking-wide text-muted">
@@ -385,7 +441,7 @@ export default async function ReportsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {desk.shifts.map((row) => (
+                  {shiftsPage.map((row) => (
                     <tr key={`${row.cashier}-${row.openingAt}`} className="border-t border-line">
                       <td className="py-2.5 pr-3 font-medium">{row.cashier}</td>
                       <td className="py-2.5 pr-3">{clock(row.openingAt)}</td>
@@ -401,6 +457,8 @@ export default async function ReportsPage({
                 </tbody>
               </table>
             </div>
+            <Pager query={query} tab="shift" page={page} total={desk.shifts.length} />
+            </>
           )}
         </section>
       ) : null}
@@ -410,17 +468,20 @@ export default async function ReportsPage({
           {desk.stock.length === 0 ? (
             <Empty text="Belum ada stok." />
           ) : (
-            <Table
-              columns={["Jenis", "Nama", "SKU", "Stok", "Minimum", "Nilai"]}
-              rows={desk.stock.map((row) => [
-                row.kind,
-                row.name,
-                row.sku,
-                formatIdDecimal(row.stock),
-                formatIdDecimal(row.minimum),
-                money(row.value),
-              ])}
-            />
+            <>
+              <Table
+                columns={["Jenis", "Nama", "SKU", "Stok", "Minimum", "Nilai"]}
+                rows={stockPage.map((row) => [
+                  row.kind,
+                  row.name,
+                  row.sku,
+                  formatIdDecimal(row.stock),
+                  formatIdDecimal(row.minimum),
+                  money(row.value),
+                ])}
+              />
+              <Pager query={query} tab="stok" page={page} total={desk.stock.length} />
+            </>
           )}
         </section>
       ) : null}
@@ -429,6 +490,47 @@ export default async function ReportsPage({
         <Info size={16} aria-hidden />
         Data pada laporan ini diperbarui sesuai transaksi yang masuk.
       </p>
+    </div>
+  );
+}
+
+function Pager({
+  query,
+  tab,
+  page,
+  total,
+}: {
+  query: { from: string; to: string; cashier: string; method: string };
+  tab: Tab;
+  page: number;
+  total: number;
+}) {
+  const pages = pageCount(total);
+  if (total === 0 || pages <= 1) return null;
+  const start = (page - 1) * PAGE_SIZE + 1;
+  const end = Math.min(page * PAGE_SIZE, total);
+  const link = "inline-flex h-9 items-center rounded-full px-3 text-sm font-medium";
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+      <p>
+        Menampilkan {start}–{end} dari {total}
+      </p>
+      <div className="flex gap-2">
+        {page <= 1 ? (
+          <span className={`${link} pointer-events-none opacity-40`}>Sebelumnya</span>
+        ) : (
+          <Link href={pageHref(query, tab, page - 1)} className={`${link} hover:bg-chip`}>
+            Sebelumnya
+          </Link>
+        )}
+        {page >= pages ? (
+          <span className={`${link} pointer-events-none opacity-40`}>Berikutnya</span>
+        ) : (
+          <Link href={pageHref(query, tab, page + 1)} className={`${link} hover:bg-chip`}>
+            Berikutnya
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

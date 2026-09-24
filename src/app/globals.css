@@ -25,7 +25,12 @@ html[data-shop-mode="fnb"] {
   --topbar-h: 64px;
   --radius-card: 16px;
   --shadow-card: 0 1px 2px rgb(62 39 35 / 0.04), 0 8px 24px rgb(62 39 35 / 0.06);
-  --motion: 180ms;
+  --motion: 100ms;
+  --motion-enter: 100ms;
+  --motion-exit: 70ms;
+  --ease-spring-curve: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out-curve: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-curve: cubic-bezier(0.4, 0, 1, 1);
 }
 
 html[data-shop-mode="retail"] {
@@ -77,6 +82,11 @@ html[data-accent] {
   --radius-card: var(--radius-card);
   --shadow-card: var(--shadow-card);
   --duration-ui: var(--motion);
+  --duration-enter: var(--motion-enter);
+  --duration-exit: var(--motion-exit);
+  --ease-spring: var(--ease-spring-curve);
+  --ease-enter: var(--ease-out-curve);
+  --ease-exit: var(--ease-in-curve);
   --font-sans: var(--font-plus-jakarta);
 }
 
@@ -144,12 +154,13 @@ textarea {
   background: rgb(28 25 23 / 0.4);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--motion) ease;
+  transition: opacity var(--motion-exit) var(--ease-in-curve);
 }
 
 .drawer-overlay.open {
   opacity: 1;
   pointer-events: auto;
+  transition: opacity var(--motion-enter) var(--ease-out-curve);
 }
 
 .app-drawer {
@@ -167,8 +178,8 @@ textarea {
   pointer-events: none;
   visibility: hidden;
   transition:
-    transform var(--motion) ease,
-    visibility 0s linear var(--motion);
+    transform var(--motion-exit) var(--ease-in-curve),
+    visibility 0s linear var(--motion-exit);
 }
 
 .app-drawer.open {
@@ -176,7 +187,7 @@ textarea {
   pointer-events: auto;
   visibility: visible;
   transition:
-    transform var(--motion) ease,
+    transform var(--motion-enter) var(--ease-spring-curve),
     visibility 0s linear 0s;
 }
 
@@ -201,8 +212,8 @@ textarea {
   border-radius: 999px;
   background: currentColor;
   transition:
-    transform var(--motion) ease,
-    opacity var(--motion) ease;
+    transform var(--motion-enter) var(--ease-spring-curve),
+    opacity var(--motion-exit) var(--ease-in-curve);
 }
 
 .burger span:nth-child(1) {
@@ -266,9 +277,74 @@ textarea {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+.pressable {
+  transition:
+    transform var(--motion-enter) var(--ease-spring-curve),
+    box-shadow var(--motion-enter) var(--ease-out-curve),
+    background-color var(--motion) var(--ease-out-curve),
+    border-color var(--motion) var(--ease-out-curve),
+    color var(--motion) var(--ease-out-curve),
+    filter var(--motion) var(--ease-out-curve);
+}
+
+.pressable:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: var(--motion-exit);
+  transition-timing-function: var(--ease-in-curve);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.menu-pop {
+  transform-origin: top right;
+  animation: menu-in var(--motion-enter) var(--ease-spring-curve) both;
+}
+
+.dialog-pop {
+  transform-origin: center;
+  animation: menu-in var(--motion-enter) var(--ease-spring-curve) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.dialog-overlay {
+  animation: fade-in var(--motion-enter) var(--ease-out-curve) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  :root {
+  :root,
+  html[data-shop-mode] {
     --motion: 0ms;
+    --motion-enter: 0ms;
+    --motion-exit: 0ms;
+  }
+
+  .pressable:hover,
+  .pressable:active {
+    transform: none;
   }
 
   * {

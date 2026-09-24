@@ -218,7 +218,7 @@ export function ProductCatalog({
                         <summary className="flex size-9 cursor-pointer list-none items-center justify-center rounded-full hover:bg-white [&::-webkit-details-marker]:hidden" aria-label="Aksi produk">
                           <MoreHorizontal size={16} />
                         </summary>
-                        <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-line bg-white p-1 shadow-card">
+                        <div className="menu-pop absolute right-0 z-20 mt-1 w-40 rounded-xl border border-line bg-white p-1 shadow-card">
                           <Link href={productHref(query, { edit: row.id, id: row.id })} className="block rounded-lg px-3 py-2 hover:bg-chip">
                             Edit produk
                           </Link>
