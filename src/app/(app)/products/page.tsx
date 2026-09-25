@@ -211,6 +211,8 @@ export default async function ProductsPage({
                       catalogPack: editorProduct.catalogPack,
                       image: editorProduct.image,
                       isFeatured: editorProduct.isFeatured,
+                      useVariants: editorProduct.useVariants,
+                      useAddons: editorProduct.useAddons,
                       sortOrder: editorProduct.sortOrder,
                     }
                   : undefined

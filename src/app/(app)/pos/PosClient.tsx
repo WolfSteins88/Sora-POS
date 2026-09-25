@@ -37,6 +37,8 @@ type Product = {
   categoryId: string;
   image?: string | null;
   isFeatured?: boolean;
+  useVariants?: boolean;
+  useAddons?: boolean;
 };
 
 type Variant = {
@@ -227,9 +229,16 @@ export function PosClient({
     });
   }
 
-  function openRecipe(p: Product) {
+  function openProduct(p: Product) {
+    if (p.kind === "goods" && !p.useVariants && !p.useAddons) {
+      addGoods(p);
+      return;
+    }
     const detail = catalog[p.id];
-    if (!detail) return;
+    if (!detail) {
+      if (p.kind === "goods") addGoods(p);
+      return;
+    }
     const defaults: Record<string, string> = {};
     for (const v of detail.variants) {
       const def = v.options.find((o) => o.isDefault) ?? v.options[0];
@@ -246,7 +255,7 @@ export function PosClient({
     let extra = 0;
     const labels: string[] = [];
     const selected: string[] = [];
-    for (const v of modal.variants) {
+    for (const v of modal.useVariants ? modal.variants : []) {
       const oid = optionIds[v.id];
       if (v.isRequired && !oid) {
         setMessage(`Pilih ${v.name}`);
@@ -259,7 +268,7 @@ export function PosClient({
         selected.push(opt.id);
       }
     }
-    const addonExtra = modal.addons.filter((a) => addonIds.includes(a.id));
+    const addonExtra = (modal.useAddons ? modal.addons : []).filter((a) => addonIds.includes(a.id));
     extra += addonExtra.reduce((s, a) => s + num(a.price), 0);
     if (addonExtra.length) labels.push(addonExtra.map((a) => a.name).join(", "));
     setCart((prev) => [
@@ -268,7 +277,7 @@ export function PosClient({
         key: crypto.randomUUID(),
         productId: modal.id,
         name: modal.name,
-        kind: "recipe",
+        kind: modal.kind,
         quantity: 1,
         optionIds: selected,
         addonIds: addonExtra.map((a) => a.id),
@@ -456,7 +465,7 @@ export function PosClient({
                   type="button"
                   disabled={sold}
                   aria-label={`Tambah ${p.name}`}
-                  onClick={() => (p.kind === "goods" ? addGoods(p) : openRecipe(p))}
+                  onClick={() => openProduct(p)}
                   className={`pressable overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-card disabled:opacity-40 ${
                     view === "list" ? "flex items-center gap-3 p-2" : "flex h-full flex-col"
                   }`}
@@ -721,7 +730,7 @@ export function PosClient({
         <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-card bg-surface p-4 shadow-card">
             <h3 className="text-lg font-semibold">{modal.name}</h3>
-            {modal.variants.map((v) => (
+            {(modal.useVariants ? modal.variants : []).map((v) => (
               <fieldset key={v.id} className="mt-3">
                 <legend className="text-sm font-medium">{v.name}</legend>
                 <div className="mt-1 flex flex-wrap gap-2">
@@ -741,7 +750,7 @@ export function PosClient({
                 </div>
               </fieldset>
             ))}
-            {modal.addons.length ? (
+            {modal.useAddons && modal.addons.length ? (
               <fieldset className="mt-3">
                 <legend className="text-sm font-medium">Add-on</legend>
                 {modal.addons.map((a) => (

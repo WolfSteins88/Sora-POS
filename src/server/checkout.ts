@@ -210,7 +210,7 @@ export async function checkoutTransaction(userId: string, payload: CheckoutPaylo
 
       let variantPrice = 0;
       const variantSnapshots: { variantName: string; optionName: string; priceAdjustment: number }[] = [];
-      if (product.kind === "recipe") {
+      {
         for (const optionId of raw.optionIds ?? []) {
           const [option] = await tx<
             { name: string; price_adjustment: string; variant_name: string; product_id: string }[]
@@ -234,7 +234,7 @@ export async function checkoutTransaction(userId: string, payload: CheckoutPaylo
 
       let addonPrice = 0;
       const addonSnapshots: { addonName: string; price: number }[] = [];
-      if (product.kind === "recipe") {
+      {
         for (const addonId of raw.addonIds ?? []) {
           const [addon] = await tx<{ name: string; price: string }[]>`
             SELECT a.name, a.price::text

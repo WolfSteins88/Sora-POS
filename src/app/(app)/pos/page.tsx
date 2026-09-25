@@ -12,7 +12,7 @@ export default async function PosPage() {
   const shopMode = normalizeShopMode(settings.shop_mode);
   const { categories, products } = await posCatalog(shopMode);
   const catalog: Record<string, Awaited<ReturnType<typeof getProductDetail>>> = {};
-  for (const p of products.filter((x) => x.kind === "recipe")) {
+  for (const p of products.filter((x) => x.kind === "recipe" || x.useVariants || x.useAddons)) {
     catalog[p.id] = await getProductDetail(p.id);
   }
   const held = await listHeldOrders(session.id);

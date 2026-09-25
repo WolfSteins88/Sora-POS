@@ -142,6 +142,8 @@ export async function saveProduct(formData: FormData) {
     minimumStock: String(kind === "goods" ? num(formData, "minimumStock") : 0),
     catalogPack,
     isFeatured: str(formData, "isFeatured") === "1",
+    useVariants: catalogPack !== "retail" && str(formData, "useVariants") === "1",
+    useAddons: catalogPack !== "retail" && str(formData, "useAddons") === "1",
     sortOrder: Math.floor(num(formData, "sortOrder")),
     updatedAt: new Date(),
   };
@@ -159,6 +161,8 @@ export async function saveProduct(formData: FormData) {
     values.sku = existing.sku;
     if (catalogPack === "retail") {
       values.kind = "goods";
+      values.useVariants = false;
+      values.useAddons = false;
       values.currentStock = String(num(formData, "currentStock"));
       values.minimumStock = String(num(formData, "minimumStock"));
     }
@@ -204,6 +208,20 @@ export async function toggleProductStatus(formData: FormData) {
   await getDb().update(products).set({ status, updatedAt: new Date() }).where(eq(products.id, id));
   revalidatePath("/products");
   revalidatePath("/pos");
+}
+
+export async function saveProductFlags(productId: string, useVariants: boolean, useAddons: boolean) {
+  const session = await requireSession();
+  guard(session.role, "products");
+  const db = getDb();
+  const [existing] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
+  if (!existing) throw new Error("Produk tidak ditemukan.");
+  if (existing.catalogPack === "retail") return;
+  await db
+    .update(products)
+    .set({ useVariants, useAddons, updatedAt: new Date() })
+    .where(eq(products.id, productId));
+  revalidateProductViews(productId);
 }
 
 export async function saveVariants(productId: string, raw: string) {
@@ -252,6 +270,44 @@ export async function saveProductAddons(productId: string, addonIds: string[]) {
   }
   revalidatePath(`/products/${productId}`);
   revalidatePath("/products");
+}
+
+export async function saveProductToppings(
+  productId: string,
+  rows: { id?: string; name: string; price: number; linked: boolean }[],
+) {
+  const session = await requireSession();
+  guard(session.role, "products");
+  const db = getDb();
+  const saved: { id: string; name: string; price: number; linked: boolean }[] = [];
+  let sort = 0;
+  for (const row of rows) {
+    const name = row.name.trim();
+    if (!name) continue;
+    const price = String(Number(row.price) || 0);
+    let id = row.id;
+    if (id) {
+      await db.update(addons).set({ name, price, updatedAt: new Date() }).where(eq(addons.id, id));
+    } else {
+      const [created] = await db
+        .insert(addons)
+        .values({ name, price, status: "active", sortOrder: sort })
+        .returning({ id: addons.id });
+      id = created.id;
+    }
+    saved.push({ id, name, price: Number(row.price) || 0, linked: !!row.linked });
+    sort += 1;
+  }
+  await db.delete(productAddons).where(eq(productAddons.productId, productId));
+  for (const row of saved) {
+    if (!row.linked) continue;
+    await db.insert(productAddons).values({ productId, addonId: row.id });
+  }
+  revalidatePath(`/products/${productId}`);
+  revalidatePath("/products");
+  revalidatePath("/products/addons");
+  revalidatePath("/pos");
+  return saved;
 }
 
 export async function saveAddon(formData: FormData) {
@@ -481,10 +537,10 @@ export async function duplicateRecipe(formData: FormData) {
     const [row] = await tx<{ id: string }[]>`
       INSERT INTO products (
         category_id, kind, name, sku, description, price, cost, image, status, stock_status,
-        current_stock, minimum_stock, is_featured, sort_order, catalog_pack
+        current_stock, minimum_stock, is_featured, use_variants, use_addons, sort_order, catalog_pack
       ) VALUES (
         ${product.categoryId}, 'recipe', ${name}, ${sku}, ${product.description}, ${product.price}, ${product.cost},
-        ${image}, ${product.status}, ${product.stockStatus}, 0, 0, ${product.isFeatured}, ${product.sortOrder}, ${product.catalogPack}
+        ${image}, ${product.status}, ${product.stockStatus}, 0, 0, ${product.isFeatured}, ${product.useVariants}, ${product.useAddons}, ${product.sortOrder}, ${product.catalogPack}
       )
       RETURNING id
     `;

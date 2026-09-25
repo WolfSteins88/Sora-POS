@@ -92,6 +92,8 @@ export const products = pgTable("products", {
   currentStock: numeric("current_stock", { precision: 12, scale: 3 }).notNull().default("0"),
   minimumStock: numeric("minimum_stock", { precision: 12, scale: 3 }).notNull().default("0"),
   isFeatured: boolean("is_featured").notNull().default(false),
+  useVariants: boolean("use_variants").notNull().default(false),
+  useAddons: boolean("use_addons").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
   catalogPack: catalogPackEnum("catalog_pack").notNull().default("fnb"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

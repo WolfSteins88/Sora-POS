@@ -31,6 +31,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         catalogPack: product.catalogPack,
         image: product.image,
         isFeatured: product.isFeatured,
+        useVariants: product.useVariants,
+        useAddons: product.useAddons,
         sortOrder: product.sortOrder,
       }}
       initialVariants={product.variants.map((variant) => ({

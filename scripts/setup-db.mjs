@@ -46,8 +46,13 @@ try {
 }
 
 const sql = postgres(url, { max: 1 });
-for (const file of ["0001_init.sql", "0002_catalog_pack.sql"]) {
-  await sql.unsafe(fs.readFileSync(path.join(root, "supabase/migrations", file), "utf8"));
+const migrationsDir = path.join(root, "supabase/migrations");
+const migrationFiles = fs
+  .readdirSync(migrationsDir)
+  .filter((f) => f.endsWith(".sql"))
+  .sort();
+for (const file of migrationFiles) {
+  await sql.unsafe(fs.readFileSync(path.join(migrationsDir, file), "utf8"));
   console.log(`Applied ${file}`);
 }
 

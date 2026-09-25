@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { BookOpen, ClipboardList, Coffee, Plus, Settings2, X } from "lucide-react";
-import { deleteProduct, saveProduct } from "@/app/actions/ops";
+import { deleteProduct, saveProduct, saveProductFlags } from "@/app/actions/ops";
 import { ImageField } from "@/components/ImageField";
 import { IdNumberInput } from "@/components/IdNumberInput";
 import { MoneyInput } from "@/components/MoneyInput";
@@ -36,6 +36,8 @@ type ProductValues = {
   catalogPack?: "fnb" | "retail";
   image?: string | null;
   isFeatured?: boolean;
+  useVariants?: boolean;
+  useAddons?: boolean;
   sortOrder?: number;
 };
 
@@ -72,20 +74,30 @@ export function ProductForm({
   const [description, setDescription] = useState(product?.description ?? "");
   const [price, setPrice] = useState(num(product?.price ?? 0));
   const [tab, setTab] = useState("info");
+  const [useVariants, setUseVariants] = useState(Boolean(product?.useVariants));
+  const [useAddons, setUseAddons] = useState(Boolean(product?.useAddons));
   const showStock = isRetail || kind === "goods";
-  const showRecipeTabs = Boolean(product) && !isRetail && product?.kind === "recipe";
+  const showRecipeTab = !isRetail && kind === "recipe";
   const tabs = [
     { id: "info", label: "Informasi Dasar", icon: ClipboardList },
-    ...(showRecipeTabs
+    ...(!isRetail
       ? [
           { id: "variants", label: "Varian", icon: Coffee },
           { id: "addons", label: "Topping", icon: Plus },
-          { id: "recipe", label: "Resep / BOM", icon: BookOpen },
+          ...(showRecipeTab ? [{ id: "recipe", label: "Resep / BOM", icon: BookOpen }] : []),
         ]
       : []),
     { id: "settings", label: "Pengaturan lainnya", icon: Settings2 },
   ];
   const cancelHref = closeHref ?? `/products?pack=${lockedPack}`;
+
+  function setFlags(next: { useVariants?: boolean; useAddons?: boolean }) {
+    const variants = next.useVariants ?? useVariants;
+    const addons = next.useAddons ?? useAddons;
+    setUseVariants(variants);
+    setUseAddons(addons);
+    if (product && !isRetail) void saveProductFlags(product.id, variants, addons);
+  }
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-5 shadow-card">
@@ -140,6 +152,8 @@ export function ProductForm({
             <input type="hidden" name="status" value={active ? "active" : "inactive"} />
             {desk ? <input type="hidden" name="next" value="desk" /> : null}
             {isRetail ? <input type="hidden" name="kind" value="goods" /> : null}
+            <input type="hidden" name="useVariants" value={!isRetail && useVariants ? "1" : "0"} />
+            <input type="hidden" name="useAddons" value={!isRetail && useAddons ? "1" : "0"} />
 
             <div className={tab === "info" ? "space-y-4" : "hidden"}>
               <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
@@ -244,7 +258,11 @@ export function ProductForm({
                     name="kind"
                     className={inputClass}
                     value={kind}
-                    onChange={(event) => setKind(event.target.value as "goods" | "recipe")}
+                    onChange={(event) => {
+                      const next = event.target.value as "goods" | "recipe";
+                      setKind(next);
+                      if (next !== "recipe" && tab === "recipe") setTab("info");
+                    }}
                   >
                     <option value="goods">Barang (stok SKU)</option>
                     <option value="recipe">Racikan (BOM)</option>
@@ -266,41 +284,60 @@ export function ProductForm({
                 <input type="checkbox" name="isFeatured" value="1" defaultChecked={product?.isFeatured} className="size-4" />
                 Unggulan (tampil di atas kasir)
               </label>
-              {showRecipeTabs || isRetail ? null : (
+              {isRetail ? null : (
                 <p className="text-sm text-muted sm:col-span-2">
-                  {product
-                    ? "Ubah jenis menjadi racikan dan simpan untuk mengatur varian, topping, dan resep."
-                    : "Simpan dulu. Varian, topping, dan resep tersedia setelah produk racikan tersimpan."}
+                  Varian dan topping bisa dipakai barang maupun racikan. Resep bahan baku hanya untuk jenis racikan.
                 </p>
               )}
             </div>
           </form>
 
-          {showRecipeTabs && product && tab === "variants" ? (
-            <div className="mt-4">
-              <RecipeExtras
-                productId={product.id}
-                kind="recipe"
-                section="variants"
-                initialVariants={initialVariants}
-                allAddons={allAddons}
-                linkedAddonIds={linkedAddonIds}
+          {!isRetail && tab === "variants" ? (
+            <div className="mt-4 space-y-4">
+              <FlagSwitch
+                checked={useVariants}
+                label="Produk ini perlu varian"
+                onChange={(checked) => setFlags({ useVariants: checked })}
               />
+              {useVariants && product ? (
+                <RecipeExtras
+                  productId={product.id}
+                  section="variants"
+                  initialVariants={initialVariants}
+                  allAddons={allAddons}
+                  linkedAddonIds={linkedAddonIds}
+                />
+              ) : null}
+              {useVariants && !product ? (
+                <p className="text-sm text-muted">Simpan produk dulu untuk mengisi opsi varian.</p>
+              ) : null}
             </div>
           ) : null}
-          {showRecipeTabs && product && tab === "addons" ? (
-            <div className="mt-4">
-              <RecipeExtras
-                productId={product.id}
-                kind="recipe"
-                section="addons"
-                initialVariants={initialVariants}
-                allAddons={allAddons}
-                linkedAddonIds={linkedAddonIds}
+          {!isRetail && tab === "addons" ? (
+            <div className="mt-4 space-y-4">
+              <FlagSwitch
+                checked={useAddons}
+                label="Produk ini perlu topping"
+                onChange={(checked) => setFlags({ useAddons: checked })}
               />
+              {useAddons && product ? (
+                <RecipeExtras
+                  productId={product.id}
+                  section="addons"
+                  initialVariants={initialVariants}
+                  allAddons={allAddons}
+                  linkedAddonIds={linkedAddonIds}
+                />
+              ) : null}
+              {useAddons && !product ? (
+                <p className="text-sm text-muted">Simpan produk dulu untuk memilih topping.</p>
+              ) : null}
             </div>
           ) : null}
-          {showRecipeTabs && product && tab === "recipe" ? (
+          {showRecipeTab && tab === "recipe" && !product ? (
+            <p className="mt-4 text-sm text-muted">Simpan produk dulu untuk mengisi resep bahan baku.</p>
+          ) : null}
+          {showRecipeTab && product && tab === "recipe" ? (
             <div className="mt-4 text-sm">
               {recipeLines.length === 0 ? <p className="text-muted">Belum ada bahan.</p> : null}
               <ul className="space-y-2">
@@ -335,7 +372,7 @@ export function ProductForm({
               <Link href={cancelHref} className="inline-flex h-11 items-center rounded-full border border-line px-4 text-sm font-medium">
                 Batal
               </Link>
-              {tab === "info" || tab === "settings" ? (
+              {tab === "info" || tab === "settings" || tab === "variants" || tab === "addons" ? (
                 <button form={FORM_ID} type="submit" className="inline-flex h-11 items-center rounded-full bg-accent px-4 text-sm font-semibold text-white">
                   Simpan Perubahan
                 </button>
@@ -344,6 +381,32 @@ export function ProductForm({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function FlagSwitch({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`relative h-6 w-11 rounded-full ${checked ? "bg-accent" : "bg-line"}`}
+      >
+        <span className={`absolute top-0.5 size-5 rounded-full bg-white ${checked ? "left-5" : "left-0.5"}`} />
+      </button>
+      <span className="text-sm font-medium">{label}</span>
     </div>
   );
 }
