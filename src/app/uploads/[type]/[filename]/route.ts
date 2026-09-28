@@ -23,8 +23,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ type: string; 
   const ext = safe.split(".").pop()?.toLowerCase() ?? "";
   const mime = MIME[ext];
   if (!mime) return new NextResponse("Not found", { status: 404 });
+  const file = path.join(uploadDir(type as ImageKind), safe);
+  const fallback = path.join(process.cwd(), "public", "uploads", type, safe);
   try {
-    const buf = await readFile(path.join(uploadDir(type as ImageKind), safe));
+    const buf = await readFile(file).catch(() => readFile(fallback));
     return new NextResponse(new Uint8Array(buf), {
       headers: {
         "Content-Type": mime,

@@ -126,16 +126,16 @@ async function category(name, description, pack, sort) {
 async function product(opts) {
   const [row] = await sql`SELECT id FROM products WHERE sku = ${opts.sku}`;
   if (row) {
-    await sql`UPDATE products SET catalog_pack = ${opts.pack}, status = 'active' WHERE id = ${row.id}`;
+    await sql`UPDATE products SET catalog_pack = ${opts.pack}, status = 'active', image = COALESCE(${opts.image ?? null}, image) WHERE id = ${row.id}`;
     return row.id;
   }
   const [created] = await sql`
     INSERT INTO products (
-      category_id, kind, name, sku, description, price, cost, status, stock_status,
+      category_id, kind, name, sku, description, price, cost, image, status, stock_status,
       current_stock, minimum_stock, is_featured, sort_order, catalog_pack
     ) VALUES (
       ${opts.categoryId}, ${opts.kind}, ${opts.name}, ${opts.sku}, ${opts.description},
-      ${opts.price}, ${opts.cost}, 'active', ${opts.stockStatus || "available"},
+      ${opts.price}, ${opts.cost}, ${opts.image ?? null}, 'active', ${opts.stockStatus || "available"},
       ${opts.stock ?? 0}, ${opts.min ?? 0}, ${!!opts.featured}, ${opts.sort || 0}, ${opts.pack}
     )
     RETURNING id
@@ -152,51 +152,51 @@ const sembako = await category("Sembako", "Barang kemasan dan kebutuhan harian",
 const rumah = await category("Rumah Tangga", "Kebutuhan rumah tangga", "retail", 2);
 
 const icedLatte = await product({
-  categoryId: coffee, kind: "recipe", name: "Iced Latte", sku: "CF-001",
+  categoryId: coffee, kind: "recipe", name: "Iced Latte", sku: "CF-001", image: "iced-latte.jpg",
   description: "Espresso with fresh milk over ice", price: 28000, cost: 12000, featured: true, sort: 1, pack: "fnb",
 });
 const cappuccino = await product({
-  categoryId: coffee, kind: "recipe", name: "Cappuccino", sku: "CF-002",
+  categoryId: coffee, kind: "recipe", name: "Cappuccino", sku: "CF-002", image: "cappuccino.jpg",
   description: "Espresso with steamed milk foam", price: 27000, cost: 11500, sort: 2, pack: "fnb",
 });
 const americano = await product({
-  categoryId: coffee, kind: "recipe", name: "Americano", sku: "CF-003",
+  categoryId: coffee, kind: "recipe", name: "Americano", sku: "CF-003", image: "americano.jpg",
   description: "Espresso with hot water", price: 25000, cost: 9000, sort: 3, pack: "fnb",
 });
 await product({
-  categoryId: coffee, kind: "goods", name: "Espresso", sku: "CF-004",
+  categoryId: coffee, kind: "goods", name: "Espresso", sku: "CF-004", image: "espresso.jpg",
   description: "Double shot espresso", price: 20000, cost: 7000, stock: 40, min: 8, sort: 4, pack: "fnb",
 });
 await product({
-  categoryId: nonCoffee, kind: "goods", name: "Chocolate Milk", sku: "NC-001",
+  categoryId: nonCoffee, kind: "goods", name: "Chocolate Milk", sku: "NC-001", image: "chocolate-milk.jpg",
   description: "Rich chocolate milk drink", price: 26000, cost: 10000, stock: 30, min: 6, sort: 1, pack: "fnb",
 });
 const matcha = await product({
-  categoryId: nonCoffee, kind: "recipe", name: "Matcha Latte", sku: "NC-002",
+  categoryId: nonCoffee, kind: "recipe", name: "Matcha Latte", sku: "NC-002", image: "matcha-latte.jpg",
   description: "Japanese matcha with milk", price: 29000, cost: 12000, sort: 2, pack: "fnb",
 });
 const lemonTea = await product({
-  categoryId: tea, kind: "recipe", name: "Lemon Tea", sku: "TH-001",
+  categoryId: tea, kind: "recipe", name: "Lemon Tea", sku: "TH-001", image: "lemon-tea.jpg",
   description: "Refreshing lemon tea", price: 22000, cost: 7000, sort: 1, pack: "fnb",
 });
 await product({
-  categoryId: tea, kind: "goods", name: "Thai Tea", sku: "TH-002",
+  categoryId: tea, kind: "goods", name: "Thai Tea", sku: "TH-002", image: "thai-tea.jpg",
   description: "Sweet Thai style milk tea", price: 24000, cost: 8500, stock: 28, min: 6, sort: 2, pack: "fnb",
 });
 await product({
-  categoryId: food, kind: "goods", name: "Chicken Sandwich", sku: "FD-001",
+  categoryId: food, kind: "goods", name: "Chicken Sandwich", sku: "FD-001", image: "chicken-sandwich.jpg",
   description: "Grilled chicken sandwich", price: 32000, cost: 15000, stock: 18, min: 4, sort: 1, pack: "fnb",
 });
 await product({
-  categoryId: food, kind: "goods", name: "Beef Burger", sku: "FD-002",
+  categoryId: food, kind: "goods", name: "Beef Burger", sku: "FD-002", image: "beef-burger.jpg",
   description: "Homemade beef burger", price: 38000, cost: 18000, stock: 16, min: 4, sort: 2, pack: "fnb",
 });
 await product({
-  categoryId: snack, kind: "goods", name: "Croissant", sku: "SN-001",
+  categoryId: snack, kind: "goods", name: "Croissant", sku: "SN-001", image: "croissant.jpg",
   description: "Butter croissant", price: 18000, cost: 7000, stock: 20, min: 5, sort: 1, pack: "fnb",
 });
 await product({
-  categoryId: snack, kind: "goods", name: "Banana Cake", sku: "SN-002",
+  categoryId: snack, kind: "goods", name: "Banana Cake", sku: "SN-002", image: "banana-cake.png",
   description: "Moist banana cake slice", price: 16000, cost: 6000, stock: 0, min: 4, stockStatus: "sold_out", sort: 2, pack: "fnb",
 });
 

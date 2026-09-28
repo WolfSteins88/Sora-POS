@@ -386,6 +386,7 @@ export async function fnbDashboard() {
     [shift],
     lowGoods,
     lowInv,
+    menuRows,
   ] = await Promise.all([
     sql<{ revenue_today: string; revenue_yesterday: string; trx_today: number; trx_yesterday: number }[]>`
       SELECT
@@ -520,6 +521,13 @@ export async function fnbDashboard() {
       ORDER BY current_stock ASC, name
       LIMIT 6
     `,
+    sql<{ name: string; image: string | null }[]>`
+      SELECT name, image
+      FROM products
+      WHERE catalog_pack = 'fnb' AND status = 'active'
+      ORDER BY (image IS NOT NULL AND image <> '' AND image <> 'demothumb.png') DESC, is_featured DESC, name
+      LIMIT 6
+    `,
   ]);
 
   const categories = collapseCategories(
@@ -591,6 +599,7 @@ export async function fnbDashboard() {
         unit: String(row.unit),
       })),
     ].slice(0, 5),
+    menu: menuRows.map((row) => ({ name: String(row.name), image: row.image })),
   };
 }
 

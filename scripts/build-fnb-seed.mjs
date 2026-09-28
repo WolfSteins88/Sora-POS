@@ -56,18 +56,18 @@ const cats = [
 const cat = Object.fromEntries(cats.map((c) => [c.name, c.id]));
 
 const productsMeta = [
-  { key: "iced", name: "Iced Latte", sku: "CF-001", cat: "Coffee", kind: "recipe", price: 32000, cost: 12000, featured: true, sort: 1, stock: 0 },
-  { key: "cap", name: "Cappuccino", sku: "CF-002", cat: "Coffee", kind: "recipe", price: 30000, cost: 11000, featured: false, sort: 2, stock: 0 },
-  { key: "ame", name: "Americano", sku: "CF-003", cat: "Coffee", kind: "recipe", price: 26000, cost: 9000, featured: false, sort: 3, stock: 0 },
-  { key: "esp", name: "Espresso", sku: "CF-004", cat: "Coffee", kind: "goods", price: 18000, cost: 7000, featured: false, sort: 4, stock: 60 },
-  { key: "choc", name: "Chocolate Milk", sku: "NC-001", cat: "Non Coffee", kind: "goods", price: 28000, cost: 10000, featured: false, sort: 1, stock: 40 },
-  { key: "matcha", name: "Matcha Latte", sku: "NC-002", cat: "Non Coffee", kind: "recipe", price: 35000, cost: 14000, featured: false, sort: 2, stock: 0 },
-  { key: "lemon", name: "Lemon Tea", sku: "TH-001", cat: "Tea", kind: "recipe", price: 24000, cost: 9000, featured: false, sort: 1, stock: 0 },
-  { key: "thai", name: "Thai Tea", sku: "TH-002", cat: "Tea", kind: "goods", price: 26000, cost: 10000, featured: false, sort: 2, stock: 36 },
-  { key: "sand", name: "Chicken Sandwich", sku: "FD-001", cat: "Food", kind: "goods", price: 45000, cost: 18000, featured: false, sort: 1, stock: 18 },
-  { key: "burg", name: "Beef Burger", sku: "FD-002", cat: "Food", kind: "goods", price: 58000, cost: 24000, featured: false, sort: 2, stock: 14 },
-  { key: "crois", name: "Croissant", sku: "SN-001", cat: "Snack", kind: "goods", price: 24000, cost: 9000, featured: false, sort: 1, stock: 22 },
-  { key: "banana", name: "Banana Cake", sku: "SN-002", cat: "Snack", kind: "goods", price: 22000, cost: 8000, featured: false, sort: 2, stock: 16 },
+  { key: "iced", name: "Iced Latte", sku: "CF-001", cat: "Coffee", kind: "recipe", price: 32000, cost: 12000, featured: true, sort: 1, stock: 0, image: "iced-latte.jpg" },
+  { key: "cap", name: "Cappuccino", sku: "CF-002", cat: "Coffee", kind: "recipe", price: 30000, cost: 11000, featured: false, sort: 2, stock: 0, image: "cappuccino.jpg" },
+  { key: "ame", name: "Americano", sku: "CF-003", cat: "Coffee", kind: "recipe", price: 26000, cost: 9000, featured: false, sort: 3, stock: 0, image: "americano.jpg" },
+  { key: "esp", name: "Espresso", sku: "CF-004", cat: "Coffee", kind: "goods", price: 18000, cost: 7000, featured: false, sort: 4, stock: 60, image: "espresso.jpg" },
+  { key: "choc", name: "Chocolate Milk", sku: "NC-001", cat: "Non Coffee", kind: "goods", price: 28000, cost: 10000, featured: false, sort: 1, stock: 40, image: "chocolate-milk.jpg" },
+  { key: "matcha", name: "Matcha Latte", sku: "NC-002", cat: "Non Coffee", kind: "recipe", price: 35000, cost: 14000, featured: false, sort: 2, stock: 0, image: "matcha-latte.jpg" },
+  { key: "lemon", name: "Lemon Tea", sku: "TH-001", cat: "Tea", kind: "recipe", price: 24000, cost: 9000, featured: false, sort: 1, stock: 0, image: "lemon-tea.jpg" },
+  { key: "thai", name: "Thai Tea", sku: "TH-002", cat: "Tea", kind: "goods", price: 26000, cost: 10000, featured: false, sort: 2, stock: 36, image: "thai-tea.jpg" },
+  { key: "sand", name: "Chicken Sandwich", sku: "FD-001", cat: "Food", kind: "goods", price: 45000, cost: 18000, featured: false, sort: 1, stock: 18, image: "chicken-sandwich.jpg" },
+  { key: "burg", name: "Beef Burger", sku: "FD-002", cat: "Food", kind: "goods", price: 58000, cost: 24000, featured: false, sort: 2, stock: 14, image: "beef-burger.jpg" },
+  { key: "crois", name: "Croissant", sku: "SN-001", cat: "Snack", kind: "goods", price: 24000, cost: 9000, featured: false, sort: 1, stock: 22, image: "croissant.jpg" },
+  { key: "banana", name: "Banana Cake", sku: "SN-002", cat: "Snack", kind: "goods", price: 22000, cost: 8000, featured: false, sort: 2, stock: 16, image: "banana-cake.png" },
 ];
 
 const products = productsMeta.map((p) => ({
@@ -79,7 +79,7 @@ const products = productsMeta.map((p) => ({
   description: p.name,
   price: String(p.price),
   cost: String(p.cost),
-  image: null,
+  image: p.image,
   status: "active",
   stock_status: "available",
   current_stock: String(p.stock),

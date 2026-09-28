@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Calendar, Clock3, Receipt, ShoppingBag, ShoppingCart, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { ProductImage } from "@/components/ProductImage";
-import { formatIdDecimal, money, num } from "@/lib/format";
+import { money } from "@/lib/format";
 import type { fnbDashboard } from "@/server/queries";
 import { CategoryDonut } from "./CategoryDonut";
+import { ParticlesCard } from "./ParticlesCard";
 import { SalesAreaChart } from "./SalesAreaChart";
 import { WitaClock } from "./WitaClock";
 
@@ -241,34 +242,7 @@ export function FnbDashboard({ data, userName }: { data: Data; userName: string 
           )}
         </section>
 
-        <section className={CARD}>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="font-semibold">Peringatan stok</h2>
-            <Link href="/inventory" className="text-sm text-accent">
-              Lihat semua
-            </Link>
-          </div>
-          {data.alerts.length === 0 ? (
-            <p className="text-sm text-muted">Semua stok aman.</p>
-          ) : (
-            <ul className="space-y-1">
-              {data.alerts.map((row) => {
-                const danger = num(row.stock) <= 0 || (num(row.minimum) > 0 && num(row.stock) <= num(row.minimum) * 0.25);
-                return (
-                  <li key={row.id}>
-                    <Link href={row.href} className="flex min-h-11 items-center gap-3 rounded-xl px-1 hover:bg-chip">
-                      <span className={`size-2.5 shrink-0 rounded-full ${danger ? "bg-danger" : "bg-warn"}`} aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-sm">{row.name}</span>
-                      <span className="shrink-0 text-sm text-muted">
-                        {formatIdDecimal(row.stock)} {row.unit}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+        <ParticlesCard menu={data.menu} alerts={data.alerts} />
       </div>
     </div>
   );
