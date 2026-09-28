@@ -36,7 +36,7 @@ export function StockChart({ alerts }: { alerts: StockAlert[] }) {
                 <div className="mb-1 flex items-baseline justify-between gap-2">
                   <span className="truncate text-sm font-medium">{row.name}</span>
                   <span className={`shrink-0 text-xs font-medium ${critical ? "text-danger" : "text-muted"}`}>
-                    Sisa {formatIdDecimal(row.stock)} {row.unit}
+                    Sisa {formatIdDecimal(row.value)} {row.unit}
                   </span>
                 </div>
                 <svg viewBox="0 0 100 8" className="h-2.5 w-full" preserveAspectRatio="none" aria-hidden>
@@ -50,7 +50,7 @@ export function StockChart({ alerts }: { alerts: StockAlert[] }) {
                     className={critical ? "fill-danger" : "fill-accent"}
                   />
                 </svg>
-                <p className="mt-1 text-[11px] text-muted">Min {formatIdDecimal(row.minimum)} {row.unit}</p>
+                <p className="mt-1 text-[11px] text-muted">Min {formatIdDecimal(row.floor)} {row.unit}</p>
               </Link>
             </li>
           );
